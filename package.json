@@ -1,0 +1,50 @@
+{
+  "name": "@urano/guard",
+  "version": "1.0.0",
+  "description": "Urano Guard SDK — Extensible Security Gateway & AI WAF Middleware for APIs, Webhooks and Infrastructure",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:bundle": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=cjs"
+  },
+  "keywords": [
+    "urano",
+    "security",
+    "waf",
+    "ai-firewall",
+    "prompt-injection",
+    "anti-phishing",
+    "middleware",
+    "express",
+    "fastify",
+    "edge",
+    "webhooks"
+  ],
+  "author": "Urano Cyber Defense Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uranotools/urano-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/uranotools/urano-guard/issues"
+  },
+  "homepage": "https://github.com/uranotools/urano-guard#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "DEV_README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

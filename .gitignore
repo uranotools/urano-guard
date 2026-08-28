@@ -1,0 +1,29 @@
+# Node & Build artifacts
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Logs & Diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & Secrets
+.env
+.env.*
+*.pem
+*.key
+*.cert
+certs/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+scratch/
+scratch_*.js
