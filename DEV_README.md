@@ -1,4 +1,4 @@
-# @urano/guard — DEV_README: Extensibilidad e Infraestructura Avanzada
+# @uranotools/urano-guard — DEV_README: Extensibilidad e Infraestructura Avanzada
 
 > Guía para desarrolladores que quieren extender, personalizar o contribuir al SDK de seguridad Urano Guard.
 
@@ -152,7 +152,7 @@ Bus de eventos pub/sub interno. Emite: `threatDetected`, `requestBlocked`, `requ
 ### Agregar un inspector personalizado
 
 ```ts
-import { InspectorBase, GuardRequestContext, ThreatIncident } from '@urano/guard';
+import { InspectorBase, GuardRequestContext, ThreatIncident } from '@uranotools/urano-guard';
 
 export class MiInspector extends InspectorBase {
     readonly name = 'MiInspector';
@@ -191,7 +191,7 @@ guard.registerInspector(new MiInspector());
 ### Agregar un adaptador personalizado
 
 ```ts
-import { AdapterBase, GuardRequestContext } from '@urano/guard';
+import { AdapterBase, GuardRequestContext } from '@uranotools/urano-guard';
 
 export class HapiAdapter extends AdapterBase {
     middleware() {
@@ -232,7 +232,7 @@ export class HapiAdapter extends AdapterBase {
 ## ⚙️ Configuración Completa de Referencia
 
 ```ts
-import { createUranoGuard } from '@urano/guard';
+import { createUranoGuard } from '@uranotools/urano-guard';
 
 const guard = createUranoGuard({
     // Agente remoto
@@ -313,7 +313,7 @@ npm run build
 npm publish --access public
 
 # En el proyecto consumidor
-npm install @urano/guard
+npm install @uranotools/urano-guard
 ```
 
 ---

@@ -1,4 +1,4 @@
-# 🛡️ Urano Guard (`@urano/guard`)
+# 🛡️ Urano Guard (`@uranotools/urano-guard`)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -31,13 +31,13 @@ Designed to defend against **autonomous adversarial AI agents, prompt injection 
 
 ```bash
 # npm
-npm install @urano/guard
+npm install @uranotools/urano-guard
 
 # pnpm
-pnpm add @urano/guard
+pnpm add @uranotools/urano-guard
 
 # yarn
-yarn add @urano/guard
+yarn add @uranotools/urano-guard
 ```
 
 ---
@@ -48,7 +48,7 @@ yarn add @urano/guard
 
 ```ts
 import express from 'express';
-import { createUranoGuard } from '@urano/guard';
+import { createUranoGuard } from '@uranotools/urano-guard';
 
 const app = express();
 app.use(express.json());
@@ -84,7 +84,7 @@ app.listen(3000, () => console.log('Protected server running on port 3000'));
 
 ```ts
 import Fastify from 'fastify';
-import { createUranoGuard } from '@urano/guard';
+import { createUranoGuard } from '@uranotools/urano-guard';
 
 const fastify = Fastify();
 const guard = createUranoGuard({ securityMode: 'block_threats' });
@@ -103,7 +103,7 @@ fastify.listen({ port: 3000 });
 ### 3. Edge / Cloudflare Workers Integration
 
 ```ts
-import { createUranoGuard } from '@urano/guard';
+import { createUranoGuard } from '@uranotools/urano-guard';
 
 const guard = createUranoGuard({ securityMode: 'strict_zero_trust' });
 
@@ -170,7 +170,7 @@ export default {
 ## ⚙️ Configuration Reference
 
 ```ts
-import { UranoGuardConfig } from '@urano/guard';
+import { UranoGuardConfig } from '@uranotools/urano-guard';
 
 const config: UranoGuardConfig = {
     // Security Operating Mode

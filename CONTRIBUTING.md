@@ -1,4 +1,4 @@
-# Contributing to @urano/guard
+# Contributing to @uranotools/urano-guard
 
 Thank you for your interest in contributing to **Urano Guard**! Together we are building the fastest, most resilient open-source AI firewall and threat inspection layer for APIs and intelligent agents.
 
@@ -58,7 +58,7 @@ npm run build
 All inspectors must inherit from `InspectorBase` in `src/inspectors/InspectorBase.ts`:
 
 ```ts
-import { InspectorBase, GuardRequestContext, ThreatIncident } from '@urano/guard';
+import { InspectorBase, GuardRequestContext, ThreatIncident } from '@uranotools/urano-guard';
 
 export class CustomExploitInspector extends InspectorBase {
     readonly name = 'CustomExploitInspector';
