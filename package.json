@@ -7,7 +7,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "build:bundle": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=cjs"
+    "build:bundle": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=cjs",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "urano",
@@ -46,5 +48,13 @@
   ],
   "engines": {
     "node": ">=18.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   }
 }
