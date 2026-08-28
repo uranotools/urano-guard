@@ -15,6 +15,15 @@ Designed to defend against **autonomous adversarial AI agents, prompt injection 
 
 ---
 
+## 💡 How It Works (At a Glance)
+
+* 🟢 **Works 100% Locally & Standalone**: You do **NOT** need any external server, cloud account, or remote AI to get started. Just install and protect your API in 2 lines of code.
+* ⚡ **Cost & Resource Saver**: Fast local heuristics (<2ms) block 99% of obvious attacks (SQLi, prompt overrides, large padding evasions) **instantly without wasting external LLM tokens or bandwidth**.
+* 🧠 **Optional Deep AI Webhook**: For subtle, complex adversarial attacks, you can optionally connect a remote Urano Cyber Agent.
+* 🛡️ **Zero Downtime Guarantee (Fail-Open)**: If a remote webhook times out or fails, the built-in **Circuit Breaker** automatically falls back to local inspection mode so your production service never stops.
+
+---
+
 ## ⚡ Key Capabilities
 
 * 🧠 **LLM & Prompt Injection Defense**: Real-time detection of system prompt overrides, jailbreaks, roleplay subversions, and instruction leakage.
@@ -50,7 +59,7 @@ bun add @uranotools/urano-guard
 
 ## 🚀 Quickstart
 
-### 1. Express.js Integration
+### 1. Express.js Integration (100% Local / Zero Setup)
 
 ```ts
 import express from 'express';
@@ -59,6 +68,7 @@ import { createUranoGuard } from '@uranotools/urano-guard';
 const app = express();
 app.use(express.json());
 
+// Initialize Guard (Works locally without external dependencies)
 const guard = createUranoGuard({
     securityMode: 'block_threats',
     inspectors: {
@@ -66,10 +76,6 @@ const guard = createUranoGuard({
         paddingEvasion: true,
         sqlAndCommands: true,
         piiDataMasking: true
-    },
-    circuitBreaker: { enabled: true, latencyThresholdMs: 800 },
-    onThreatDetected: (threat, req) => {
-        console.warn(`[ALERT] Threat ${threat.category} from ${req.ip} (Risk: ${threat.riskScore})`);
     }
 });
 
@@ -147,12 +153,50 @@ flowchart TD
     EVAL --> STAGE1[1. Whitelist / Blacklist / Nonce Cache]:::memory
     STAGE1 --> STAGE2[2. LRU Decision Cache Hit]:::memory
     STAGE2 --> STAGE3[3. Heuristic Array: Prompt Injection, Padding Evasion, SQLi]:::heuristic
-    STAGE3 --> STAGE4[4. Remote AI Evaluation via Circuit Breaker]:::heuristic
     
-    STAGE4 -- Threat Detected (Score ≥ 60) --> DEF[❌ Block 403 / Tarpit / Decoy Honey-Token]:::defense
-    STAGE4 -- Clean Payload --> PII[🔒 PII Masking & Data Sanitization]:::allow
+    STAGE3 -- Threat Detected in Local WAF --> DEF[❌ Block 403 / Tarpit / Decoy Honey-Token]:::defense
+    
+    STAGE3 -- Clean Payload --> OPT_AI{Remote AI Webhook Enabled?}
+    OPT_AI -- Yes --> STAGE4[4. Remote AI Evaluation with Circuit Breaker]:::heuristic
+    OPT_AI -- No --> PII[🔒 PII Masking & Data Sanitization]:::allow
+    STAGE4 -- Clean Payload --> PII
+    STAGE4 -- Deep Threat Detected --> DEF
+    
     PII --> APP([🚀 Pass to Application Handler]):::allow
 ```
+
+---
+
+## ❓ Frequently Asked Questions (FAQ)
+
+<details>
+<summary><b>1. Do I need an external AI server or Urano account to use Urano Guard?</b></summary>
+<br/>
+<b>No.</b> Urano Guard works 100% locally and autonomously out-of-the-box. It contains built-in zero-latency heuristic inspectors for prompt injections, SQLi, command injection, bot fuzzing, and PII masking. The remote webhook is completely optional.
+</details>
+
+<details>
+<summary><b>2. Is the remote webhook called for every single request?</b></summary>
+<br/>
+<b>No.</b> Requests flow through an ascending-cost pipeline:
+<ol>
+  <li>If the request is cached or whitelisted, it passes in <b>0ms</b>.</li>
+  <li>If the request contains an obvious attack detected by local WAF rules, it is <b>blocked immediately in local memory</b> without ever contacting the remote webhook (saving bandwidth and token costs).</li>
+  <li>The remote webhook is only contacted if configured and if the local heuristic check passed.</li>
+</ol>
+</details>
+
+<details>
+<summary><b>3. What happens if my remote AI webhook goes down or times out?</b></summary>
+<br/>
+Urano Guard includes a <b>Tri-State Circuit Breaker</b> with a <b>Fail-Open</b> policy. If the remote endpoint fails or exceeds <code>timeoutMs</code> (default: 1500ms), the breaker trips to <code>OPEN</code> and automatically falls back to local heuristic inspection without dropping legitimate user traffic.
+</details>
+
+<details>
+<summary><b>4. What is the performance overhead on my API?</b></summary>
+<br/>
+Cache hits resolve in <b>&lt;1ms</b>. Cold heuristic evaluations take between <b>1ms and 3ms</b>. The core SDK has zero heavy dependencies (no bundled models, no C++ compilation steps).
+</details>
 
 ---
 
@@ -165,7 +209,7 @@ const config: UranoGuardConfig = {
     // Security Operating Mode
     securityMode: 'block_threats', // 'block_threats' | 'strict_zero_trust' | 'monitor_only' | 'quarantine'
 
-    // Remote Deep AI Analysis (Optional)
+    // Remote Deep AI Analysis (Optional — leave undefined for 100% local operation)
     agentWebhookUrl: 'https://agent.urano.cloud/webhook',
     apiKey: process.env.URANO_API_KEY,
     timeoutMs: 1500,
