@@ -2,7 +2,7 @@ name: Publish Package to NPM
 
 on:
   release:
-    types: [created]
+    types: [published, created]
   workflow_dispatch:
 
 jobs:
