@@ -4,62 +4,123 @@
 
 ---
 
-## 📐 High-Level Architectural Overview
+## 📐 High-Level Architectural Pipeline
 
-Urano Guard acts as a **non-blocking, low-latency security perimeter and AI Web Application Firewall (WAF)** that sits directly in front of API endpoints, webhook receivers, and intelligent agent runtimes.
+Urano Guard operates as a **low-latency security perimeter and AI Web Application Firewall (WAF)** that intercepts requests before reaching application logic or intelligent agent runtimes.
 
+```mermaid
+flowchart TD
+    classDef ingress fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef memory fill:#0f172a,stroke:#22c55e,stroke-width:2px,color:#fff;
+    classDef heuristic fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef remote fill:#311042,stroke:#c084fc,stroke-width:2px,color:#fff;
+    classDef defense fill:#450a0a,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef allow fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+
+    REQ([🌐 Incoming HTTP Request]):::ingress --> ADAPTERS[🔌 Ingress Adapter Layer<br/>Express / Fastify / Edge / Http]:::ingress
+    
+    ADAPTERS --> EVALUATOR{⚡ Evaluator Pipeline}
+
+    subgraph MemoryStage ["1. Zero-Latency Memory Stage (<1ms)"]
+        EVALUATOR --> WL{⚪ Whitelisted?}:::memory
+        WL -- Yes --> PASS_ALLOW[✅ PASS / ALLOW]:::allow
+        WL -- No --> BL{🔴 Blacklisted?}:::memory
+        BL -- Yes --> BLOCK_RESP[❌ BLOCK 403]:::defense
+        BL -- No --> REPLAY{🔁 Replay / Nonce Valid?}:::memory
+        REPLAY -- Invalid --> BLOCK_RESP
+        REPLAY -- Valid --> CACHE{⚡ LRU Cache Hit?}:::memory
+        CACHE -- Hit --> PASS_ALLOW
+    end
+
+    subgraph HeuristicStage ["2. Local Heuristic Engine (~2ms)"]
+        CACHE -- Miss --> INSPECTORS[🔍 Heuristic Inspectors Array]:::heuristic
+        INSPECTORS --> PROMPT[🧠 Prompt Injection]:::heuristic
+        INSPECTORS --> PADDING[🛡️ Padding Evasion >8KB]:::heuristic
+        INSPECTORS --> SQLI[💉 SQL / OS Command Injection]:::heuristic
+        INSPECTORS --> BOT[🤖 Bot Fuzzing / Scanners]:::heuristic
+        INSPECTORS --> URL[🔗 Malicious URLs / SSRF]:::heuristic
+    end
+
+    INSPECTORS --> THREAT_CHECK{Threat Detected?}
+    
+    THREAT_CHECK -- Yes (Score ≥ 60) --> DEFENSE_MODE{Active Defense Mode}:::defense
+    DEFENSE_MODE --> TARPIT[⏳ Tarpit Delay Generator]:::defense
+    DEFENSE_MODE --> HONEY[🍯 Decoy Honey-Tokens]:::defense
+    DEFENSE_MODE --> BLOCK_RESP
+
+    THREAT_CHECK -- No Threats --> REMOTE_AI{Deep AI Agent Enabled?}
+
+    subgraph RemoteStage ["3. Remote AI Analysis (with Circuit Breaker)"]
+        REMOTE_AI -- Yes --> CB{⚡ Circuit Breaker<br/>CLOSED / HALF_OPEN?}:::remote
+        CB -- Closed --> AGENT_QUERY[🤖 Remote Urano Cyber Agent Webhook]:::remote
+        CB -- Open / Tripped --> LOCAL_FALLBACK[⚡ Local Heuristic Fallback]:::memory
+        AGENT_QUERY -- Clean --> SANITIZE
+        AGENT_QUERY -- Critical --> BLOCK_RESP
+    end
+
+    REMOTE_AI -- No --> SANITIZE[🔒 PII Masker & Data Sanitizer]:::allow
+    LOCAL_FALLBACK --> SANITIZE
+    
+    SANITIZE --> PASS_ALLOW --> APP([🚀 Target Application Handler]):::allow
+    
+    BLOCK_RESP -.-> EVENTBUS([📡 Telemetry EventBus]):::ingress
+    PASS_ALLOW -.-> EVENTBUS
 ```
-                                  INCOMING HTTP REQUEST
-                                            │
-                                            ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ 1. INGRESS & ADAPTER LAYER (src/adapters/)                                             │
-│    Normalizes heterogeneous framework requests into a unified GuardRequestContext.      │
-│    • ExpressAdapter │ FastifyAdapter │ EdgeAdapter (Cloudflare/Vercel) │ HttpAdapter       │
-└───────────────────────────────────────────┬────────────────────────────────────────────┘
-                                            │
-                                            ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ 2. PIPELINE ORCHESTRATOR & EVALUATOR (src/core/Evaluator.ts)                           │
-│    Executes security inspection stages in order of computational cost (O(1) -> AI).    │
-│                                                                                        │
-│  [Stage 1] ⚪ Whitelist / 🔴 Blacklist (O(1) ThreatRegistry Memory Lookup)              │
-│       │                                                                                │
-│  [Stage 2] 🔁 Anti-Replay Guard (Nonce Cache + Timestamp Tolerance Window)            │
-│       │                                                                                │
-│  [Stage 3] 🕵️ Behavioral Fingerprinter (Attacker Header / Structural Signature)       │
-│       │                                                                                │
-│  [Stage 4] 📊 Semantic Rate Limiter (Distributed Campaign Reconnaissance Filter)       │
-│       │                                                                                │
-│  [Stage 5] ⚡ LRU Verdict Cache (<1ms Instant Decision Hit)                           │
-│       │                                                                                │
-│  [Stage 6] 🔍 Local Heuristic Engine (Zero-dependency Regex Array)                    │
-│       ├── PromptInjectionInspector (Jailbreaks, System Overrides)                      │
-│       ├── MaliciousUrlInspector (SSRF, Open Redirects)                                 │
-│       ├── InjectionSqlCmdInspector (SQLi, OS Command Injection)                        │
-│       ├── BotFuzzingInspector (Path traversals, Automated scanners)                    │
-│       └── PaddingEvasionInspector (Deep Tail & Mid-Payload Sampling >8KB)              │
-│       │                                                                                │
-│  [Stage 7] 🧠 Remote Deep AI Agent (Optional / Webhook via Tri-State Circuit Breaker) │
-│       │                                                                                │
-│  [Stage 8] 🔒 Sanitization & PII Data Masker (Credit Cards, Keys, National IDs)       │
-└───────────────────────────────────────────┬────────────────────────────────────────────┘
-                                            │
-                                            ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ 3. ACTIVE DEFENSE & VERDICT RESOLUTION (src/core/HoneypotRouter.ts)                    │
-│    • ALLOW: Pass sanitized payload to target application handler.                      │
-│    • BLOCK: Terminate with 403 Forbidden / 429 Rate Limited.                           │
-│    • TARPIT: Inject artificial latency to exhaust attacker/bot compute resources.     │
-│    • HONEY-RESPONSE: Return realistic decoy data embedded with traceable Honey-Tokens.│
-└───────────────────────────────────────────┬────────────────────────────────────────────┘
-                                            │
-                                            ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ 4. TELEMETRY & EVENT BUS (src/core/EventBus.ts)                                        │
-│    Publishes asynchronous events for SOC logging, metrics, and incident auditing.      │
-│    • threatDetected │ requestBlocked │ requestAllowed │ honeyTokenAccessed             │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+
+---
+
+## ⚡ Tri-State Circuit Breaker State Machine
+
+When communicating with upstream AI evaluators, the Circuit Breaker guarantees zero service degradation via auto-recovery state transitions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> CLOSED : Initial Healthy State
+    
+    CLOSED --> OPEN : Consecutive Failures >= threshold OR Latency > timeout
+    note right of OPEN : Bypasses Remote AI\nZero-latency local fallback
+    
+    OPEN --> HALF_OPEN : After recoveryTimeMs (30s)
+    note right of HALF_OPEN : Probes with single test request
+    
+    HALF_OPEN --> CLOSED : Probe Successful (Latency OK)
+    HALF_OPEN --> OPEN : Probe Failed (Trip again)
+```
+
+---
+
+## 🔄 End-to-End Request Sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as 🌐 Client / Attacker
+    participant Adapter as 🔌 Framework Adapter
+    participant Evaluator as ⚡ Evaluator Core
+    participant Cache as 💾 LRU Cache
+    participant Inspectors as 🔍 Heuristic Engine
+    participant Agent as 🤖 Urano AI Agent
+    participant App as 🚀 App Route Handler
+
+    Client->>Adapter: HTTP Request (POST /api/chat)
+    Adapter->>Evaluator: inspect(GuardRequestContext)
+    
+    Evaluator->>Cache: checkCache(hash)
+    alt Cache Hit
+        Cache-->>Evaluator: Cached ALLOW Decision (<1ms)
+    else Cache Miss
+        Evaluator->>Inspectors: runAllInspectors(body, headers)
+        Inspectors-->>Evaluator: ThreatIncident[] (Heuristics Clean)
+        
+        opt Deep AI Enabled & Circuit Closed
+            Evaluator->>Agent: POST /webhook (AI Verification)
+            Agent-->>Evaluator: Verdict: ALLOW (Risk: 0)
+        end
+    end
+
+    Evaluator-->>Adapter: SecurityDecision { allowed: true, sanitizedBody }
+    Adapter->>App: Forward sanitized request
+    App-->>Client: 200 OK Response
 ```
 
 ---
@@ -82,8 +143,6 @@ Urano Guard is designed with strict inversion of control. Contributors can exten
 
 ### 1. Adding a New Threat Inspector (`src/inspectors/`)
 
-All inspectors extend `InspectorBase` and implement the `inspect(context)` method:
-
 ```ts
 import { InspectorBase, GuardRequestContext, ThreatIncident } from '@uranotools/urano-guard';
 
@@ -101,7 +160,6 @@ export class GraphQLAbuseInspector extends InspectorBase {
 
         const bodyStr = typeof context.body === 'string' ? context.body : JSON.stringify(context.body || '');
         
-        // Fast heuristic check
         if (bodyStr.includes('__schema') || bodyStr.includes('__type')) {
             return {
                 id: `thr_gql_${Date.now()}`,
@@ -122,8 +180,6 @@ export class GraphQLAbuseInspector extends InspectorBase {
 ---
 
 ### 2. Adding a Framework Adapter (`src/adapters/`)
-
-Adapters normalize framework-specific request structures into `GuardRequestContext`:
 
 ```ts
 import { AdapterBase, GuardRequestContext } from '@uranotools/urano-guard';
@@ -155,8 +211,6 @@ export class HonoAdapter extends AdapterBase {
 
 ### 3. Subscribing to Security Telemetry (`src/core/EventBus.ts`)
 
-Connect Urano Guard events to your custom SIEM, Datadog, or Slack alerting webhook:
-
 ```ts
 const guard = createUranoGuard({ ... });
 
@@ -173,8 +227,6 @@ guard.eventBus.on('honeyTokenAccessed', ({ token, req }) => {
 
 ## 🗺️ Architectural Roadmap
 
-Contributors are encouraged to pick up features from our planned roadmap:
-
 | Component | Status | Priority | Target Release |
 |---|:---:|:---:|:---:|
 | **Tri-State Circuit Breaker & Fail-Open** | ✅ Complete | High | v1.0.0 |
@@ -188,11 +240,3 @@ Contributors are encouraged to pick up features from our planned roadmap:
 | **Hono & Elysia.js Adapters** | 🚧 Planned | Medium | v1.1.0 |
 | **OpenTelemetry / Prometheus Metrics Exporter** | 🚧 Planned | High | v1.2.0 |
 | **WebAssembly (WASM) Custom Rules Engine** | 💡 Proposed | Low | v2.0.0 |
-
----
-
-## 🔒 Security Principles
-
-1. **Defense in Depth:** Local heuristics filter common threats; remote AI models evaluate novel adversarial attacks.
-2. **Minimal False Positives:** Default risk thresholds ($60/100$) ensure benign developer traffic is never blocked accidentally.
-3. **Auditable Incident Traceability:** Every blocked or quarantined request contains a unique incident ID (`thr_...`) with matched pattern telemetry for SOC review.

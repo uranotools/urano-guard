@@ -133,42 +133,25 @@ export default {
 
 ## 📐 Architecture Pipeline
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    Incoming HTTP Request                   │
-└──────────────────────────┬─────────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────────┐
-│                     ADAPTER LAYER                          │
-│   ExpressAdapter │ FastifyAdapter │ EdgeAdapter │ HttpAdapter│
-│   ─ Normalizes request into GuardRequestContext ─          │
-└──────────────────────────┬─────────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────────┐
-│               EVALUATOR MULTI-STAGE PIPELINE               │
-│                                                            │
-│  Stage 1: Whitelist / Blacklist (O(1) Memory Check)        │
-│  Stage 2: Anti-Replay Guard (Nonce Cache + Timestamp)      │
-│  Stage 3: Behavioral Fingerprinter (Attacker Signature)    │
-│  Stage 4: Semantic Rate Limiter (Campaign Recon Detection) │
-│  Stage 5: LRU Verdict Cache (<1ms Cache Hits)              │
-│  Stage 6: Local Heuristic Inspectors (Zero-latency regex)  │
-│           ├─ PromptInjectionInspector                      │
-│           ├─ MaliciousUrlInspector                         │
-│           ├─ InjectionSqlCmdInspector                      │
-│           ├─ BotFuzzingInspector                           │
-│           └─ PaddingEvasionInspector (Tail/Mid Analysis)   │
-│  Stage 7: Remote AI Agent Webhook (with Circuit Breaker)   │
-│  Stage 8: PII Data Masking & Verdict Consolidation         │
-└──────────────────────────┬─────────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────────┐
-│            Active Defense (Tarpit & Honey-Tokens)          │
-└──────────────────────────┬─────────────────────────────────┘
-                           │
-┌──────────────────────────▼─────────────────────────────────┐
-│         PASS TO APP HANDLER  /  BLOCK WITH 403/429         │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    classDef ingress fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#fff;
+    classDef memory fill:#0f172a,stroke:#22c55e,stroke-width:2px,color:#fff;
+    classDef heuristic fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#fff;
+    classDef defense fill:#450a0a,stroke:#f87171,stroke-width:2px,color:#fff;
+    classDef allow fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#fff;
+
+    REQ([🌐 Incoming Request]):::ingress --> ADAPT[🔌 Framework Adapter<br/>Express / Fastify / Edge]:::ingress
+    ADAPT --> EVAL[⚡ Evaluator Core]
+    
+    EVAL --> STAGE1[1. Whitelist / Blacklist / Nonce Cache]:::memory
+    STAGE1 --> STAGE2[2. LRU Decision Cache Hit]:::memory
+    STAGE2 --> STAGE3[3. Heuristic Array: Prompt Injection, Padding Evasion, SQLi]:::heuristic
+    STAGE3 --> STAGE4[4. Remote AI Evaluation via Circuit Breaker]:::heuristic
+    
+    STAGE4 -- Threat Detected (Score ≥ 60) --> DEF[❌ Block 403 / Tarpit / Decoy Honey-Token]:::defense
+    STAGE4 -- Clean Payload --> PII[🔒 PII Masking & Data Sanitization]:::allow
+    PII --> APP([🚀 Pass to Application Handler]):::allow
 ```
 
 ---
@@ -232,9 +215,9 @@ const config: UranoGuardConfig = {
 
 ---
 
-## 🛠️ Advanced Extensibility
+## 🛠️ Advanced Extensibility & Architecture Blueprint
 
-Need to write custom inspectors, adapters, or contribute to the core? Check the [**DEV_README.md**](DEV_README.md) for full architectural documentation.
+Looking to contribute new inspectors, custom adapters, or understand the internals? Check the [**ARCHITECTURE.md**](ARCHITECTURE.md) and [**DEV_README.md**](DEV_README.md).
 
 ---
 
