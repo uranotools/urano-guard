@@ -1,8 +1,11 @@
 # 🛡️ Urano Guard (`@uranotools/urano-guard`)
 
+[![npm version](https://img.shields.io/npm/v/@uranotools/urano-guard.svg?color=cb0000&logo=npm)](https://www.npmjs.com/package/@uranotools/urano-guard)
+[![npm downloads](https://img.shields.io/npm/dm/@uranotools/urano-guard.svg?color=blue)](https://www.npmjs.com/package/@uranotools/urano-guard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green?logo=node.js)](https://nodejs.org/)
+[![CI & Security](https://github.com/uranotools/urano-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/uranotools/urano-guard/actions)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-red.svg)](SECURITY.md)
 
@@ -15,8 +18,8 @@ Designed to defend against **autonomous adversarial AI agents, prompt injection 
 ## ⚡ Key Capabilities
 
 * 🧠 **LLM & Prompt Injection Defense**: Real-time detection of system prompt overrides, jailbreaks, roleplay subversions, and instruction leakage.
-* 🛡️ **Padding Evasion Detection**: Inspects deep payload structures (tail & mid-sampling) to defeat evasive attackers hiding exploits at the end of large requests.
-* ⚡ **Ultra-Low Latency (<1ms Cache)**: Built-in LRU cache and local heuristic regex engine to filter 99% of malicious probes without calling remote APIs.
+* 🛡️ **Padding Evasion Detection**: Deep payload analysis (tail & middle sampling) to defeat attackers hiding exploits at the end of large requests (>8KB).
+* ⚡ **Ultra-Low Latency (<1ms Cache)**: In-memory LRU cache and zero-dependency regex engine filter 99% of probes locally before hitting AI evaluators.
 * 🛑 **Tri-State Circuit Breaker**: Auto-recovering breaker (`CLOSED` ➔ `OPEN` ➔ `HALF_OPEN`) with **Fail-Open** guarantee so your production traffic is never disrupted.
 * 🔁 **Anti-Replay Attack Protection**: Cryptographic nonce cache and timestamp validation windows to prevent request replay exploits.
 * 📊 **Semantic Rate Limiting**: Intent-based rate limiting to block distributed reconnaissance campaigns targeting identical endpoints across multiple rotating IPs.
@@ -30,14 +33,17 @@ Designed to defend against **autonomous adversarial AI agents, prompt injection 
 ## 📦 Installation
 
 ```bash
-# npm
-npm install @uranotools/urano-guard
-
 # pnpm
 pnpm add @uranotools/urano-guard
 
+# npm
+npm install @uranotools/urano-guard
+
 # yarn
 yarn add @uranotools/urano-guard
+
+# bun
+bun add @uranotools/urano-guard
 ```
 
 ---
@@ -223,6 +229,12 @@ const config: UranoGuardConfig = {
     }
 };
 ```
+
+---
+
+## 🛠️ Advanced Extensibility
+
+Need to write custom inspectors, adapters, or contribute to the core? Check the [**DEV_README.md**](DEV_README.md) for full architectural documentation.
 
 ---
 
