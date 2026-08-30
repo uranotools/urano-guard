@@ -1,6 +1,6 @@
 # Urano Guard examples
 
-Run a local chat API in front of a **custom agent webhook** (no Urano Cloud required). Full contract: [CUSTOM_AGENT.md](../CUSTOM_AGENT.md).
+Run a local chat API in front of a **security agent** you host (no Urano Cloud). The WAF stays in-process; the agent is the plus for deeper scoring. Full contract (verdict + optional analysis/report): [CUSTOM_AGENT.md](../CUSTOM_AGENT.md).
 
 ## 1. Start the agent
 
@@ -64,4 +64,11 @@ On Unix use `\` instead of `^` for line continuation.
 ## Other files
 
 - `express-server.ts` — Express + `rawBody` via `verify` (needs `express` installed in your app)
-- `metrics-exporter.ts` — sample `MetricsExporter` for EventBus counters
+- `metrics-exporter.ts` — console `MetricsExporter` (debug)
+- `prometheus-scrape.ts` — in-process Prometheus text at `GET /metrics` (`createPrometheusMetrics`, `guard.metricsHandler()`)
+- `http-audit-sink.ts` — `createHttpAuditSink` POST to a SIEM/webhook (`SIEM_URL`)
+- `redis-store.ts` — inject ioredis / node-redis via `RedisSharedStore`, `await guard.ready()`, pinned MemoryStore prefixes
+
+Cluster / store contract (`setNX`, `sadd`, `decr`, `cas`, LRU pin): [ENTERPRISE.md](../ENTERPRISE.md).
+
+Enterprise rollout (monitor_only week 1, failClosed, audit/PII): [ENTERPRISE.md](../ENTERPRISE.md).

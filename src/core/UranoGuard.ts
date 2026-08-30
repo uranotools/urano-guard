@@ -1,12 +1,16 @@
 import { UranoGuardConfig } from '../types/config';
 import { GuardRequestContext, SecurityDecision } from '../types/context';
-import { ThreatIncident } from '../types/threat';
-import { GuardLogger, resolveLogger } from '../types/logger';
+import { ThreatIncident, newIncidentId } from '../types/threat';
+import { GuardLogger, MetricsExporter, resolveLogger } from '../types/logger';
+import { AuditLogger, resolveAuditLogger, toAuditEvent } from '../types/audit';
 import { EventBus } from './EventBus';
 import { CacheManager } from './CacheManager';
 import { ThreatRegistry } from './ThreatRegistry';
 import { Evaluator } from './Evaluator';
 import { HoneypotRouter } from './HoneypotRouter';
+import { validateConfig } from './validateConfig';
+import { MemoryStore, SharedStore } from './SharedStore';
+import { createPrometheusMetrics, isPrometheusMetrics } from './PrometheusMetrics';
 import { InspectorBase } from '../inspectors/InspectorBase';
 import { PromptInjectionInspector } from '../inspectors/PromptInjectionInspector';
 import { MaliciousUrlInspector } from '../inspectors/MaliciousUrlInspector';
@@ -30,17 +34,28 @@ export class UranoGuard {
     readonly cache: CacheManager;
     readonly evaluator: Evaluator;
     readonly honeypot?: HoneypotRouter;
+    readonly store: SharedStore;
     private readonly logger: GuardLogger;
+    private readonly auditLogger?: AuditLogger;
+    private readonly metrics?: MetricsExporter;
 
     constructor(config: UranoGuardConfig = {}) {
+        validateConfig(config);
         this.config = config;
         this.logger = resolveLogger(config.logger);
+        this.auditLogger = resolveAuditLogger(config.auditLogger);
+        this.metrics = config.metrics ?? createPrometheusMetrics();
+        this.store = config.store ?? new MemoryStore({
+            maxEntries: 10_000,
+            defaultTtlMs: config.cacheTtlMs || 60_000
+        });
         this.eventBus = new EventBus(this.logger);
         this.registry = new ThreatRegistry(
             config.blockedIdentifiers || [],
-            config.whitelistedIdentifiers || []
+            config.whitelistedIdentifiers || [],
+            this.store
         );
-        this.cache = new CacheManager(config.cacheTtlMs || 60_000);
+        this.cache = new CacheManager(config.cacheTtlMs || 60_000, 5000, this.store);
 
         const sqlOn = config.inspectors?.sqlAndCommands !== false && config.inspectors?.sqlInjection !== false;
         const cmdOn = config.inspectors?.sqlAndCommands !== false && config.inspectors?.commandInjection !== false;
@@ -63,7 +78,9 @@ export class UranoGuard {
 
         this.evaluator = new Evaluator(this.config, this.registry, this.cache, defaultInspectors, {
             logger: this.logger,
-            metrics: config.metrics
+            metrics: this.metrics,
+            store: this.store,
+            eventBus: this.eventBus
         });
 
         if (config.honeypot?.tarpitEnabled || config.honeypot?.honeyTokensEnabled) {
@@ -81,15 +98,35 @@ export class UranoGuard {
             });
         }
 
-        if (config.metrics) {
-            this.eventBus.on('requestBlocked', () => config.metrics!.increment('requestBlocked', 1));
-            this.eventBus.on('requestAllowed', () => config.metrics!.increment('requestAllowed', 1));
-            this.eventBus.on('threatDetected', () => config.metrics!.increment('threatDetected', 1));
+        if (this.metrics) {
+            this.eventBus.on('requestBlocked', () => this.metrics!.increment('requestBlocked', 1));
+            this.eventBus.on('requestAllowed', () => this.metrics!.increment('requestAllowed', 1));
+            this.eventBus.on('threatDetected', () => this.metrics!.increment('threatDetected', 1));
         }
     }
 
     getLogger(): GuardLogger {
         return this.logger;
+    }
+
+    /**
+     * Wait until ThreatRegistry constructor seeds (`ug:block:` / `ug:allow:`)
+     * are written to the injected {@link SharedStore}.
+     *
+     * `inspect` already awaits this via `isWhitelisted` / `isBlacklisted`.
+     * Call it before `listen()` when another process may read Redis first:
+     *
+     * ```ts
+     * const guard = createUranoGuard({ store, blockedIdentifiers: ['1.2.3.4'] });
+     * await guard.ready();
+     * app.listen(3000);
+     * ```
+     *
+     * Custom stores must implement the full SharedStore contract (`setNX`,
+     * `sadd`, `smembers`, `decr`, `cas`) — not only get/set/incr/delete.
+     */
+    ready(): Promise<void> {
+        return this.registry.ready();
     }
 
     async inspect(context: GuardRequestContext): Promise<SecurityDecision> {
@@ -111,15 +148,46 @@ export class UranoGuard {
             await this.eventBus.emit('requestAllowed', { decision, req: context });
         }
 
+        if (this.auditLogger) {
+            try {
+                this.auditLogger(toAuditEvent(newIncidentId('req'), context.method, context.path, decision));
+            } catch (err) {
+                this.logger.warn('auditLogger failed', err);
+            }
+        }
+
         return decision;
+    }
+
+    prometheus(): string {
+        if (isPrometheusMetrics(this.metrics)) {
+            return this.metrics.renderPrometheus();
+        }
+        return '# Urano Guard: attach createPrometheusMetrics() via config.metrics to scrape\n';
+    }
+
+    metricsHandler(): (req: any, res: any) => void {
+        return (_req: any, res: any) => {
+            const body = this.prometheus();
+            if (typeof res.status === 'function' && typeof res.send === 'function') {
+                res.status(200);
+                if (typeof res.type === 'function') res.type('text/plain');
+                else if (typeof res.set === 'function') res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+                return res.send(body);
+            }
+            if (typeof res.writeHead === 'function') {
+                res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+            }
+            if (typeof res.end === 'function') res.end(body);
+        };
     }
 
     registerInspector(inspector: InspectorBase): void {
         this.evaluator.addInspector(inspector);
     }
 
-    block(identifier: string, ttlMs?: number): void { this.registry.block(identifier, ttlMs); }
-    unblock(identifier: string): void { this.registry.unblock(identifier); }
+    block(identifier: string, ttlMs?: number): Promise<void> { return this.registry.block(identifier, ttlMs); }
+    unblock(identifier: string): Promise<void> { return this.registry.unblock(identifier); }
 
     express(): (req: any, res: any, next: any) => void {
         return new ExpressAdapter(this).middleware();

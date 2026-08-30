@@ -52,7 +52,7 @@ export class FastifyAdapter extends AdapterBase {
                     request.body = decision.sanitizedBody;
                 }
             } catch (err: any) {
-                if (this.guard.config.failOpen !== false) {
+                if (!this.failClosed()) {
                     this.guard.getLogger().warn('Fastify evaluation failed, failOpen=true', err);
                     return;
                 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createUranoGuard } from '../src/core/UranoGuard';
 import { InspectorBase } from '../src/inspectors/InspectorBase';
 import { GuardRequestContext } from '../src/types/context';
@@ -20,6 +20,10 @@ class FlagInspector extends InspectorBase {
         };
     }
 }
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 describe('Evaluator', () => {
     it('allows clean traffic', async () => {
@@ -102,5 +106,28 @@ describe('Evaluator', () => {
         expect(first.action).toBe('QUARANTINE');
         const second = await guard.inspect(ctx({ body: 'hello', senderId: 'bad-user', ip: 'bad-user' }));
         expect(second.threats[0].category).toBe('BLACKLISTED');
+    });
+
+    it('forwards agent analysis and report onto the decision', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            headers: { get: () => null },
+            text: async () => JSON.stringify({
+                verdict: 'BLOCK',
+                riskScore: 88,
+                analysis: 'Model flagged a novel jailbreak.',
+                report: { title: 'Jailbreak', summary: 'Novel phrasing', severity: 'HIGH' }
+            })
+        })));
+        const guard = createUranoGuard({
+            securityMode: 'block_threats',
+            enableCache: false,
+            remoteAgent: { url: 'https://agent.example/analyze', invokeWhen: 'always' }
+        });
+        const decision = await guard.inspect(ctx({ body: { message: 'weather in Madrid' } }));
+        expect(decision.source).toBe('REMOTE_AGENT');
+        expect(decision.allowed).toBe(false);
+        expect(decision.agentAnalysis).toBe('Model flagged a novel jailbreak.');
+        expect(decision.agentReport?.title).toBe('Jailbreak');
     });
 });

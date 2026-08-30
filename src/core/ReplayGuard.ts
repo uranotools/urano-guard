@@ -1,9 +1,14 @@
 import { GuardLogger, createSilentLogger } from '../types/logger';
+import { SharedStore } from '../types/store';
+
+const NONCE_PREFIX = 'ug:nonce:';
 
 export interface ReplayGuardOptions {
     timestampWindowMs?: number;
     maxNonces?: number;
     logger?: GuardLogger;
+    /** When set, nonces are stored here (`ug:nonce:`) so processes can share them. */
+    store?: SharedStore;
 }
 
 export interface ReplayCheckResult {
@@ -16,6 +21,7 @@ export class ReplayGuard {
     private windowMs: number;
     private maxNonces: number;
     private logger: GuardLogger;
+    private store?: SharedStore;
     private lastSweep = 0;
 
     constructor(opts: ReplayGuardOptions = {}) {
@@ -23,9 +29,10 @@ export class ReplayGuard {
         this.maxNonces = opts.maxNonces ?? 20_000;
         this.usedNonces = new Map();
         this.logger = opts.logger ?? createSilentLogger();
+        this.store = opts.store;
     }
 
-    check(headers: Record<string, string | string[] | undefined>): ReplayCheckResult {
+    check(headers: Record<string, string | string[] | undefined>): ReplayCheckResult | Promise<ReplayCheckResult> {
         const rawTs = headers['x-urano-timestamp'] || headers['x-timestamp'];
         const nonce = headers['x-urano-nonce'] || headers['x-nonce'];
 
@@ -40,12 +47,25 @@ export class ReplayGuard {
         }
 
         const nonceStr = String(Array.isArray(nonce) ? nonce[0] : nonce);
+        if (this.store) {
+            return this.checkStore(nonceStr, now);
+        }
+
         if (this.usedNonces.has(nonceStr)) {
             return { valid: false, reason: 'REPLAY_DETECTED' };
         }
 
         this.usedNonces.set(nonceStr, now);
         this.sweepExpired(now);
+        return { valid: true };
+    }
+
+    /** Store path uses SET NX so only one process can claim a nonce. */
+    private async checkStore(nonceStr: string, now: number): Promise<ReplayCheckResult> {
+        const claimed = await this.store!.setNX(NONCE_PREFIX + nonceStr, now, this.windowMs);
+        if (!claimed) {
+            return { valid: false, reason: 'REPLAY_DETECTED' };
+        }
         return { valid: true };
     }
 

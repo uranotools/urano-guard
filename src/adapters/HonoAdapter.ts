@@ -70,7 +70,7 @@ export class HonoAdapter extends AdapterBase {
                 c.set?.('uranoGuard', decision);
                 await next();
             } catch (err: any) {
-                if (this.guard.config.failOpen !== false) {
+                if (!this.failClosed()) {
                     this.guard.getLogger().warn('Hono evaluation failed, failOpen=true', err);
                     return next();
                 }

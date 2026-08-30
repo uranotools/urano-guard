@@ -16,12 +16,18 @@ const INJECTION_RULES: DetectionRule[] = [
     { pattern: /system\s*prompt\s*override/i, name: 'PROMPT_OVERRIDE', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
     { pattern: /reveal\s+(your\s+)?(system\s+instructions|internal\s+prompt)/i, name: 'PROMPT_LEAK_REQUEST', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
     { pattern: /<\|system\|>/i, name: 'SYSTEM_TAG', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
-    { pattern: /<\/(?:instructions|system)>/i, name: 'CLOSE_INSTRUCTION_TAG', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /<\|(?:im_start|im_end|endoftext|assistant)\|>/i, name: 'CHATML_SPECIAL_TOKEN', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /<<\s*SYS\s*>>/i, name: 'LLAMA_SYS_TAG', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /\[\/?INST\]/, name: 'LLAMA_INST_TAG', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /<\/(?:instructions|system|system_prompt|sys_prompt)>/i, name: 'CLOSE_INSTRUCTION_TAG', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /\bdo\s+anything\s+now\b/i, name: 'DO_ANYTHING_NOW', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
     { pattern: /\b(base64|rot13|hex)\s+decode\s+this\s+command\b/i, name: 'OBFUSCATION_BYPASS', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 75, summary: 'AI directive override attempt' },
     { pattern: /exec\s*\(\s*["'`][\s\S]{0,200}["'`]/i, name: 'EVAL_EXEC_INJECTION', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
     { pattern: /override\s+(the\s+)?system\s+prompt/i, name: 'OVERRIDE_SYSTEM_PROMPT', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
     { pattern: /act\s+as\s+(an?\s+)?(unfiltered|jailbroken|dan|evil|unrestricted)\b/i, name: 'ACT_AS_JAILBREAK', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
-    { pattern: /\b(llm|model|gpt)\s+jailbreak\b|\bjailbreak\s+(mode|the\s+(model|ai|llm))\b/i, name: 'JAILBREAK_MODE', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' }
+    { pattern: /\b(llm|model|gpt)\s+jailbreak\b|\bjailbreak\s+(mode|the\s+(model|ai|llm))\b/i, name: 'JAILBREAK_MODE', category: 'PROMPT_INJECTION', severity: 'HIGH', riskScore: 80, summary: 'AI directive override attempt' },
+    { pattern: /\b(?:enter|enable|activate|switch\s+to)\s+sudo\s+mode\b/i, name: 'SUDO_MODE_JAILBREAK', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' },
+    { pattern: /\balways\s+intelligent\s+and\s+machiavellian\b/i, name: 'AIM_JAILBREAK', category: 'PROMPT_INJECTION', severity: 'CRITICAL', riskScore: 85, summary: 'AI directive override attempt' }
 ];
 
 export class PromptInjectionInspector extends InspectorBase {

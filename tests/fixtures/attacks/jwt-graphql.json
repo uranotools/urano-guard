@@ -1,0 +1,20 @@
+[
+  { "id": "jwt-alg-none", "path": "/api/session", "headers": { "authorization": "Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiIxIn0." }, "body": {} },
+  { "id": "graphql-introspection", "path": "/graphql", "body": { "query": "{ __schema { types { name } } }" } },
+  { "id": "jwt-kid-traversal", "path": "/api/session", "headers": { "authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ii4uLy4uL2Rldi9udWxsIn0.eyJzdWIiOiIxIn0.sig" }, "body": {} },
+  { "id": "jwt-malformed-parts", "path": "/api/session", "headers": { "authorization": "Bearer aaaa.bbbb.cccc.dddd" }, "body": {} },
+  { "id": "jwt-header-invalid", "path": "/api/session", "headers": { "authorization": "Bearer not-json.e30.sig" }, "body": {} },
+  { "id": "jwt-alg-missing", "path": "/api/session", "headers": { "authorization": "Bearer eyJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxIn0." }, "body": {} },
+  { "id": "graphql-batch", "path": "/graphql", "body": [
+    { "query": "{ a }" },
+    { "query": "{ b }" },
+    { "query": "{ c }" },
+    { "query": "{ d }" },
+    { "query": "{ e }" },
+    { "query": "{ f }" },
+    { "query": "{ g }" },
+    { "query": "{ h }" },
+    { "query": "{ i }" }
+  ] },
+  { "id": "graphql-depth", "path": "/graphql", "body": { "query": "{ a { b { c { d { e { f { g { h { i { j { k { l { m } } } } } } } } } } } } }" } }
+]

@@ -1,0 +1,10 @@
+[
+  { "id": "xss-script", "body": "<script>alert(1)</script>" },
+  { "id": "xss-javascript-uri", "body": { "href": "javascript:alert(document.cookie)" } },
+  { "id": "xss-onerror", "body": "<img src=x onerror=alert(1)>" },
+  { "id": "xss-data-html", "body": { "href": "data:text/html;base64,PHN2Zy9vbmxvYWQ9YWxlcnQoMSk+" } },
+  { "id": "xss-onfocus", "body": "<input onfocus=alert(1) autofocus>" },
+  { "id": "xss-vbscript", "body": { "href": "vbscript:msgbox(1)" } },
+  { "id": "xss-hex-entity-script", "body": "<&#x73;cript>alert(1)</script>" },
+  { "id": "xss-named-entity-script", "body": "&lt;script&gt;alert(document.cookie)&lt;/script&gt;" }
+]

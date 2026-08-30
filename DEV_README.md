@@ -2,6 +2,8 @@
 
 > Guía para desarrolladores que quieren extender, personalizar o contribuir al SDK de seguridad Urano Guard.
 
+Contrato de producción / Redis: [ENTERPRISE.md](ENTERPRISE.md). Agente (análisis + reportes): [CUSTOM_AGENT.md](CUSTOM_AGENT.md). PRs: [CONTRIBUTING.md](CONTRIBUTING.md). IDEs con IA: [AGENTS.md](AGENTS.md).
+
 ---
 
 ## 📐 Arquitectura de Capas
@@ -13,7 +15,7 @@
                            │
 ┌──────────────────────────▼─────────────────────────────────┐
 │                ADAPTADORES (ingress layer)                  │
-│   ExpressAdapter │ FastifyAdapter │ EdgeAdapter │ HttpAdapter│
+│   Express │ Fastify │ Hono │ Edge │ Http (Node nativo)     │
 │   ─ Normaliza la petición a GuardRequestContext ─          │
 └──────────────────────────┬─────────────────────────────────┘
                            │
@@ -37,8 +39,13 @@
 │     ├─ BotFuzzingInspector                                │
 │     ├─ JwtTamperingInspector / GraphqlAbuseInspector      │
 │     └─ PaddingEvasionInspector          (anti-evasion)    │
-│  7. Remote AI Agent (BYO webhook)        (Circuit Breaker) │
+│  7. Agente remoto (cualquier HTTPS)      (Circuit Breaker) │
+│     + analysis / report → decision.agentAnalysis/Report    │
 │  8. Verdict Consolidation                                  │
+│                                                            │
+│  Store (MemoryStore | RedisSharedStore | el tuyo)          │
+│  Audit (json | callback | createHttpAuditSink)             │
+│  Métricas (Prometheus | OTel Meter inyectado)              │
 └──────────────────────────┬─────────────────────────────────┘
                            │
 ┌──────────────────────────▼─────────────────────────────────┐
@@ -56,16 +63,42 @@
 ## 🔩 Módulos del Núcleo (src/core/)
 
 ### UranoGuard
-Orquestador principal. Instanciar con `createUranoGuard(config)` o `new UranoGuard(config)`.
+Orquestador. `createUranoGuard(config)` valida con `validateConfig` (lanza `ConfigValidationError`).
+
+| Método | Uso |
+|---|---|
+| `inspect(ctx)` | Pipeline completo |
+| `ready()` | Espera seeds `ug:block:` / `ug:allow:` (útil con Redis antes de `listen()`) |
+| `registerInspector(i)` | Inspector extra en caliente |
+| `block(id, ttlMs?)` / `unblock(id)` | Promises — van al store |
+| `express()` / `fastify()` / `hono()` / `edge()` / `http()` | Adapters |
+| `prometheus()` / `metricsHandler()` | Scrape si `metrics` es `createPrometheusMetrics()` |
+| `eventBus.on(...)` | `threatDetected`, `requestBlocked`, `requestAllowed`, `honeyTokenAccessed` |
 
 ### Evaluator
-Pipeline de evaluación multi-etapa. Integra todos los sistemas de defensa en orden de menor a mayor costo computacional.
+Pipeline barato → caro. Consolida local + remoto. Un `ALLOW` remoto **no** deshace un `BLOCK` local salvo `monitor_only`. Copia `agentAnalysis` / `agentReport` del agente a la decisión.
+
+### SharedStore (`MemoryStore` / `RedisSharedStore`)
+Todo el estado de cluster pasa por aquí (Promesas). Default: `MemoryStore` (mismo proceso). Varios procesos: inyecta `RedisSharedStore` con **tu** cliente (este package no depende de `ioredis` / `redis`).
+
+Métodos: `get` / `set` / `delete` / `incr` / `decr` / `setNX` / `cas` / `sadd` / `smembers`.
+
+Prefijos: `ug:cache:`, `ug:rl:`, `ug:nonce:`, `ug:block:`, `ug:allow:`, `ug:fp:`, `ug:cb:`. `PINNED_STORE_PREFIXES` no los evicta el LRU de MemoryStore (`ug:cache:` sí). Detalle y wrap de node-redis: [ENTERPRISE.md](ENTERPRISE.md).
+
+```ts
+import { createUranoGuard, RedisSharedStore } from '@uranotools/urano-guard';
+import Redis from 'ioredis';
+
+const store = new RedisSharedStore({ client: new Redis(process.env.REDIS_URL) });
+const guard = createUranoGuard({ store, blockedIdentifiers: ['1.2.3.4'] });
+await guard.ready();
+```
 
 ### CircuitBreaker
 **Patrón tri-estado:** CLOSED → OPEN → HALF_OPEN → CLOSED.
-- Abre automáticamente si el agente remoto supera `latencyThresholdMs` o alcanza `failureThreshold` fallos.
-- En estado OPEN, el Evaluator usa exclusivamente inspección local (sin penalizar latencia).
-- Sana automáticamente tras `recoveryTimeMs` con una sonda HALF_OPEN.
+- Abre si el agente supera `latencyThresholdMs` o `failureThreshold` fallos.
+- En OPEN el Evaluator se queda en inspección local.
+- Con `store`: estado en `ug:cb:`. OPEN→HALF_OPEN es `cas`; decay de fallos es `decr`; un solo probe cluster-wide es `setNX(ug:cb:probeLock)`. Sin store, sigue in-process.
 
 ```ts
 circuitBreaker: {
@@ -77,9 +110,7 @@ circuitBreaker: {
 ```
 
 ### ReplayGuard
-Protección anti-replay mediante **ventana de tiempo** (timestamp) + **nonce cache** (LRU 20k entradas).
-- Requiere cabeceras: `x-urano-timestamp` (epoch ms) y `x-urano-nonce` (UUID único).
-- Modo `strict: true` bloquea peticiones sin cabeceras; modo normal solo alerta.
+Ventana de tiempo (`x-urano-timestamp`) + nonce (`x-urano-nonce`) con `setNX(ug:nonce:)`. El segundo claim concurrente es `REPLAY_DETECTED`. `strict: true` bloquea si faltan cabeceras.
 
 ```ts
 replayGuard: {
@@ -92,8 +123,9 @@ replayGuard: {
 ### SemanticRateLimiter
 Rate limiting por **intención semántica** en lugar de IP fuente. Detecta campañas de reconocimiento distribuido donde cada IP envía pocas peticiones pero con el mismo patrón de sondeo.
 
-- La clave semántica se construye de: método + path normalizado + palabra clave de reconocimiento.
-- `CAMPAIGN_DETECTED`: cuando N IPs distintas comparten el mismo patrón → bloqueo global del patrón.
+- Clave: método + path normalizado + palabra de reconocimiento.
+- Conteos: `incr(ug:rl:count:)`. IPs distintas: `sadd` / `smembers` (`ug:rl:ips:`), TTL que no se desliza.
+- `CAMPAIGN_DETECTED` cuando N IPs comparten el patrón.
 
 ```ts
 semanticRateLimit: {
@@ -130,13 +162,35 @@ honeypot: {
 ```
 
 ### CacheManager
-LRU en memoria de veredictos. Latencia < 1ms en cache hit. Configurable con `cacheTtlMs`.
+Veredictos en `ug:cache:` (el LRU de MemoryStore **sí** puede evictar estas keys). `cacheTtlMs`. Hash SHA-256 del body completo.
 
 ### ThreatRegistry
-Blacklist / Whitelist en memoria con operaciones O(1). Populable en tiempo de ejecución vía `guard.block(id)` y `guard.unblock(id)`.
+Allow/block en `ug:allow:` / `ug:block:`. Seeds del constructor se esperan (`inspect` ya espera; opcional `await guard.ready()`). `block` / `unblock` son Promises.
 
 ### EventBus
-Bus de eventos pub/sub interno. Emite: `threatDetected`, `requestBlocked`, `requestAllowed`, `honeyTokenAccessed`.
+`threatDetected`, `requestBlocked`, `requestAllowed`, `honeyTokenAccessed`. Los listeners no deben tirar el request.
+
+### Audit
+`auditLogger: 'json' | (event) => void | createHttpAuditSink({ url })`. Evento seguro: `requestId`, `action`, `allowed`, `riskScore`, `threatCategories`, `path`, `method`, `source`, `latencyMs`. **Nunca** body, cookies, `Authorization`, ni `agentReport`.
+
+```ts
+createUranoGuard({
+    auditLogger: createHttpAuditSink({
+        url: process.env.SIEM_URL,
+        headers: { 'X-Webhook-Key': process.env.SIEM_TOKEN || '' }
+    })
+});
+```
+
+### Métricas
+- `createPrometheusMetrics()` → `guard.prometheus()` / `guard.metricsHandler()`.
+- `createOpenTelemetryMetrics({ meter })` — tú creas el Meter; este package no instala `@opentelemetry/*`.
+- O un `MetricsExporter` propio (`increment` / `observe` / `gauge`).
+
+No hay traces/spans.
+
+### failOpen / failClosed
+Default fail-open: timeout o JSON inválido del agente no tumba la API. `failClosed: true` bloquea (o el adapter responde 5xx). Mutuamente excluyentes. Los inspectores locales corren igual. `trustProxy` default `false`.
 
 ---
 
@@ -153,6 +207,8 @@ Bus de eventos pub/sub interno. Emite: `threatDetected`, `requestBlocked`, `requ
 | **PaddingEvasionInspector** | Código malicioso oculto al final/medio de payloads grandes | 92 |
 | JwtTamperingInspector | `alg: none`, kid traversal | 80–90 |
 | GraphqlAbuseInspector | Introspection, depth, batching | 65–70 |
+
+Texto: `collectInspectionText` → `normalizeInspectionText` (NFKC, zero-width, homoglyph, decode HTML acotado; `leet` en prompts). SQL: `stripSqlComments`. Reglas nuevas recientes: `SUDO_MODE_JAILBREAK`, `AIM_JAILBREAK`, `CMD_PATH_TRAVERSAL`. Corpus: `tests/fixtures/attacks/` y `benign/`.
 
 ### Agregar un inspector personalizado
 
@@ -226,26 +282,44 @@ export class HapiAdapter extends AdapterBase {
 ## 🛡️ Utilidades de Seguridad (src/utils/)
 
 ### crypto.ts
-- `verifyHmacSignature(payload, secret, signature)`: Valida firma `x-hub-signature-256`.
+- `verifyHmacSignature`, `signHmac`, `sha256Hex`, `randomToken`.
+
+### inspectText.ts
+- `collectInspectionText`, `normalizeInspectionText`, `stripSqlComments`, `decodeHtmlEntitiesBounded`, `stringifySafe`.
+
+### identity.ts
+- `pickClientIp`, `pickSenderId` — respetan `trustProxy`.
 
 ### mtls.ts
-- `createMtlsAgent(config)`: Crea un agente HTTPS con certificado cliente para comunicación mTLS.
-- `extractClientCertCN(req)`: Extrae el CN del certificado presentado por el cliente.
-- `validateClientCert(req, allowedCNs)`: Verifica que el CN del cliente esté en la lista permitida.
+- `createMtlsAgent`, `extractClientCertCN`, `validateClientCert`.
 
 ---
 
 ## ⚙️ Configuración Completa de Referencia
 
 ```ts
-import { createUranoGuard } from '@uranotools/urano-guard';
+import {
+    createUranoGuard,
+    createHttpAuditSink,
+    createPrometheusMetrics,
+    RedisSharedStore
+} from '@uranotools/urano-guard';
 
 const guard = createUranoGuard({
-    // Agente remoto BYO — ver CUSTOM_AGENT.md
+    securityMode: 'block_threats', // empieza con monitor_only en prod
+    trustProxy: false,
+    exposeDecisionDetails: false,
+    failOpen: true,
+    // failClosed: false,
+    maxBodyBytes: 256 * 1024,
+
+    // store: new RedisSharedStore({ client }),
+    auditLogger: createHttpAuditSink({ url: process.env.SIEM_URL }),
+    metrics: createPrometheusMetrics(),
+
     remoteAgent: {
-        url: process.env.AGENT_URL,
+        url: process.env.AGENT_URL, // omitir = 100% local
         timeoutMs: 1500,
-        failOpen: true,
         invokeWhen: 'local_clean',
         auth: { type: 'bearer', token: process.env.AGENT_TOKEN },
         payload: {
@@ -254,10 +328,6 @@ const guard = createUranoGuard({
         }
     },
 
-    // Modo operativo
-    securityMode: 'block_threats', // | 'strict_zero_trust' | 'monitor_only' | 'quarantine'
-
-    // Circuit Breaker (NUEVO)
     circuitBreaker: {
         enabled: true,
         latencyThresholdMs: 800,
@@ -265,14 +335,12 @@ const guard = createUranoGuard({
         recoveryTimeMs: 30_000
     },
 
-    // Anti-Replay (NUEVO)
     replayGuard: {
         enabled: true,
         timestampWindowMs: 300_000,
         strict: true
     },
 
-    // Semantic Rate Limiting (NUEVO)
     semanticRateLimit: {
         enabled: true,
         windowMs: 60_000,
@@ -280,13 +348,11 @@ const guard = createUranoGuard({
         campaignIpThreshold: 20
     },
 
-    // Fingerprinting (NUEVO)
     fingerprinting: {
         enabled: true,
         suspiciousThreshold: 10
     },
 
-    // Honeypot / Tarpit (NUEVO)
     honeypot: {
         tarpitEnabled: true,
         tarpitDelayMs: 4_000,
@@ -294,44 +360,53 @@ const guard = createUranoGuard({
         onHoneyTokenAccessed: (token, ctx) => console.warn('Atacante regresó:', token, ctx)
     },
 
-    // Caché
+    routePolicies: [
+        { path: '/health', method: 'GET', skip: true }
+    ],
+
     enableCache: true,
     cacheTtlMs: 60_000,
+    blockedIdentifiers: [],
+    whitelistedIdentifiers: [],
 
-    // Inspectores
     inspectors: {
         promptInjection: true,
         maliciousUrls: true,
-        sqlAndCommands: true,
+        sqlAndCommands: true, // enciende SQL + CMD + XSS
+        sqlInjection: true,
+        commandInjection: true,
+        xss: true,
         botFuzzing: true,
         piiDataMasking: true,
-        paddingEvasion: true     // NUEVO
+        paddingEvasion: true,
+        jwtTampering: true,
+        graphqlAbuse: true,
+        maliciousUrlsAllowHosts: ['api.internal.example']
     },
 
-    // Callbacks
     onThreatDetected: (threat, req) => soc.log(threat),
-    onBlock: (decision, req) => metrics.increment('blocked'),
+    onBlock: (decision, req) => {
+        if (decision.agentReport) soc.ticket(decision.agentReport);
+    }
 });
+
+await guard.ready();
 ```
 
----
-
-Agente propio (no Urano Cloud): contrato, campos `include`, HMAC y `invokeWhen` están en [CUSTOM_AGENT.md](CUSTOM_AGENT.md).
+El agente puede devolver `analysis` y `report` → `decision.agentAnalysis` / `decision.agentReport` si están en `response.include`. `NEED` + `onRequest` / skills; `maxFollowUps` (1–4); `memory` en el store; `investigateAsync` para no bloquear el request. EventBus: `agentInvestigationComplete`. Contrato: [CUSTOM_AGENT.md](CUSTOM_AGENT.md).
 
 ---
 
 ## 📦 Publicación y Distribución
 
 ```bash
-# Compilar
+npm test
+npm run typecheck
+npm run lint
 npm run build
-
-# Publicar en npm (o registro privado)
-npm publish --access public
-
-# En el proyecto consumidor
-npm install @uranotools/urano-guard
 ```
+
+Publicar: bump en `package.json`, CHANGELOG, tag `vX.Y.Z` y GitHub Release (`publish.yml` hace `npm publish --provenance`). No publiques a mano salvo que no haga falta provenance. Hoy `package.json` está en **1.1.0**; el trabajo inédito es **1.2.0 (unreleased)**.
 
 ---
 
@@ -339,20 +414,13 @@ npm install @uranotools/urano-guard
 
 | Feature | Estado |
 |---------|--------|
-| PromptInjectionInspector | ✅ Listo |
-| MaliciousUrlInspector | ✅ Listo |
-| InjectionSqlCmdInspector | ✅ Listo |
-| BotFuzzingInspector | ✅ Listo |
-| PaddingEvasionInspector | ✅ Listo |
-| CircuitBreaker (tri-estado) | ✅ Listo |
-| ReplayGuard (Nonce + Timestamp) | ✅ Listo |
-| SemanticRateLimiter (campaña) | ✅ Listo |
-| RequestFingerprinter (comportamiento) | ✅ Listo |
-| HoneypotRouter (Tarpit + HoneyTokens) | ✅ Listo |
-| mTLS utilities | ✅ Listo |
-| Inspector de GraphQL introspection | ✅ Listo |
-| Inspector de JWT tampering | ✅ Listo |
+| Inspectores (prompt, URL, SQL/CMD/XSS, bot, padding, JWT, GraphQL) | ✅ Listo |
+| CircuitBreaker (in-process + store `cas`/`decr`/`setNX`) | ✅ Listo |
+| ReplayGuard (`setNX`), SemanticRateLimiter (`sadd`), fingerprints | ✅ Listo |
+| SharedStore / MemoryStore pin / RedisSharedStore | ✅ 1.2 unreleased |
+| `failClosed`, validateConfig, audit + `createHttpAuditSink` | ✅ 1.2 unreleased |
+| Prometheus + OTel Meter inyectado | ✅ 1.2 unreleased |
+| Agente BYO + passthrough `analysis` / `report` | ✅ Listo |
 | Adaptador Hono | ✅ Listo |
-| Agente remoto BYO (CUSTOM_AGENT.md) | ✅ Listo |
-| Adaptador para AWS API Gateway | 🔜 Planeado |
-| Dashboard SOC en tiempo real | 🔜 Planeado |
+| Adaptador AWS API Gateway | 🔜 Planeado |
+| Plantillas / multi-sink de reportes (lado agente) | 🔜 El agente, no este package |

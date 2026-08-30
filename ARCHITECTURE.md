@@ -239,6 +239,9 @@ guard.eventBus.on('honeyTokenAccessed', ({ token, req }) => {
 | **JWT Tampering & Algorithm Confusion Inspector** | ✅ Complete | High | v1.0.0 |
 | **Hono Adapter** | ✅ Complete | Medium | v1.0.0 |
 | **Configurable BYO Remote Agent** | ✅ Complete | High | v1.0.0 |
-| **OpenTelemetry / Prometheus Metrics Exporter** | 🚧 Interface + EventBus counters | High | v1.2.0 |
-| **Elysia.js Adapter** | 🚧 Planned | Medium | v1.1.0 |
+| **Agent analysis + report passthrough** | ✅ `agentAnalysis` / `agentReport` on the decision | High | v1.2.0 |
+| **OpenTelemetry / Prometheus Metrics Exporter** | ✅ Injected Prometheus + optional OTel Meter (no OTLP SDK) | High | v1.2.0 |
+| **SharedStore / Redis / circuit CAS** | ✅ Unreleased in 1.2.0 | High | v1.2.0 |
+| **Elysia.js Adapter** | 🚧 Planned | Medium | later |
+| **Richer agent reports (templates, multi-sink)** | 💡 Agent-side; Guard only forwards | Medium | later |
 | **WebAssembly (WASM) Custom Rules Engine** | 💡 Proposed | Low | v2.0.0 |

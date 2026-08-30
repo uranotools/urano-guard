@@ -14,6 +14,8 @@ import { LocalAnalysis, RemoteAgentClient, resolveRemoteAgentConfig, shouldInvok
 import { resolveRoutePolicy } from './routePolicy';
 import { sha256Hex } from '../utils/crypto';
 import { stringifySafe } from '../utils/inspectText';
+import { SharedStore } from '../types/store';
+import { EventBus } from './EventBus';
 
 const INSPECTOR_FLAGS: Record<string, keyof InspectorFlags> = {
     PromptInjectionInspector: 'promptInjection',
@@ -47,7 +49,13 @@ export class Evaluator {
         registry: ThreatRegistry,
         cache: CacheManager,
         inspectors: InspectorBase[],
-        extras?: { logger?: GuardLogger; metrics?: MetricsExporter; circuitBreaker?: CircuitBreaker }
+        extras?: {
+            logger?: GuardLogger;
+            metrics?: MetricsExporter;
+            circuitBreaker?: CircuitBreaker;
+            store?: SharedStore;
+            eventBus?: EventBus;
+        }
     ) {
         this.config = config;
         this.registry = registry;
@@ -63,14 +71,17 @@ export class Evaluator {
                 failureThreshold: config.circuitBreaker?.failureThreshold,
                 recoveryTimeMs: config.circuitBreaker?.recoveryTimeMs,
                 probeSuccessThreshold: config.circuitBreaker?.probeSuccessThreshold,
-                logger: this.logger
+                logger: this.logger,
+                metrics: this.metrics,
+                store: extras?.store ?? config.store
             });
         }
 
         if (config.replayGuard?.enabled) {
             this.replayGuard = new ReplayGuard({
                 timestampWindowMs: config.replayGuard?.timestampWindowMs,
-                logger: this.logger
+                logger: this.logger,
+                store: extras?.store ?? config.store
             });
         }
 
@@ -78,23 +89,27 @@ export class Evaluator {
             this.rateLimiter = new SemanticRateLimiter({
                 windowMs: config.semanticRateLimit?.windowMs,
                 maxRequestsPerWindow: config.semanticRateLimit?.maxRequestsPerWindow,
-                campaignIpThreshold: config.semanticRateLimit?.campaignIpThreshold
+                campaignIpThreshold: config.semanticRateLimit?.campaignIpThreshold,
+                store: extras?.store ?? config.store
             });
         }
 
         if (config.fingerprinting?.enabled) {
-            this.fingerprinter = new RequestFingerprinter();
+            this.fingerprinter = new RequestFingerprinter(10_000, extras?.store ?? config.store);
         }
 
         const remoteCfg = resolveRemoteAgentConfig(config);
         if (remoteCfg) {
+            const store = extras?.store ?? config.store;
             this.remoteClient = new RemoteAgentClient({
                 config: remoteCfg,
                 circuitBreaker: this.circuitBreaker,
                 logger: this.logger,
                 metrics: this.metrics,
                 securityMode: config.securityMode,
-                useLegacyPayload: !config.remoteAgent?.payload && !config.remoteAgent?.buildPayload && !!config.agentWebhookUrl
+                useLegacyPayload: !config.remoteAgent?.payload && !config.remoteAgent?.buildPayload && !!config.agentWebhookUrl,
+                store,
+                onInvestigateComplete: (event) => extras?.eventBus?.emit('agentInvestigationComplete', event)
             });
         }
     }
@@ -112,11 +127,11 @@ export class Evaluator {
         }
         const securityMode: SecurityMode = route?.securityMode || this.config.securityMode || 'block_threats';
 
-        if (this.registry.isWhitelisted(senderId)) {
+        if (await this.registry.isWhitelisted(senderId)) {
             return this.allow(start, 'LOCAL_INSPECTOR');
         }
 
-        if (this.registry.isBlacklisted(senderId)) {
+        if (await this.registry.isBlacklisted(senderId)) {
             return this.block(start, 100, [{
                 id: newIncidentId('thr_blk'),
                 category: 'BLACKLISTED',
@@ -129,7 +144,7 @@ export class Evaluator {
         }
 
         if (this.replayGuard) {
-            const replayCheck = this.replayGuard.check(context.headers as any);
+            const replayCheck = await this.replayGuard.check(context.headers as any);
             if (!replayCheck.valid) {
                 const isStrict = this.config.replayGuard?.strict === true;
                 const incident: ThreatIncident = {
@@ -151,7 +166,7 @@ export class Evaluator {
         if (this.fingerprinter) {
             const maxBytes = this.config.maxBodyBytes ?? 256 * 1024;
             const bodySnippet = stringifySafe(context.body, maxBytes);
-            const fp = this.fingerprinter.fingerprint(context.headers as any, context.method, context.path, bodySnippet);
+            const fp = await this.fingerprinter.fingerprint(context.headers as any, context.method, context.path, bodySnippet);
             const threshold = this.config.fingerprinting?.suspiciousThreshold ?? 10;
             if (fp.seenBefore && fp.occurrences >= threshold) {
                 return this.block(start, 75, [{
@@ -171,7 +186,7 @@ export class Evaluator {
             const maxBytes = this.config.maxBodyBytes ?? 256 * 1024;
             const bodyStr = stringifySafe(context.body, maxBytes);
             const semanticKey = this.rateLimiter.buildSemanticKey(context.method, context.path, bodyStr);
-            const rateResult = this.rateLimiter.check(semanticKey, context.ip);
+            const rateResult = await this.rateLimiter.check(semanticKey, context.ip);
 
             if (rateResult === 'CAMPAIGN_DETECTED') {
                 return this.block(start, 85, [{
@@ -200,7 +215,7 @@ export class Evaluator {
 
         const cacheKey = this.buildCacheKey(senderId, context);
         if (this.config.enableCache !== false) {
-            const cached = this.cache.get(cacheKey);
+            const cached = await this.cache.get(cacheKey);
             if (cached) return cached;
         }
 
@@ -234,11 +249,11 @@ export class Evaluator {
         const decision = this.consolidate(start, local, securityMode, context, remoteDecision);
 
         if (decision.action === 'QUARANTINE' && !decision.allowed) {
-            this.registry.block(senderId, this.config.quarantineTtlMs ?? 15 * 60_000);
+            await this.registry.block(senderId, this.config.quarantineTtlMs ?? 15 * 60_000);
         }
 
         if (this.config.enableCache !== false) {
-            this.cache.set(cacheKey, decision);
+            await this.cache.set(cacheKey, decision);
         }
         return decision;
     }
@@ -292,7 +307,10 @@ export class Evaluator {
             redirectUrl: remote?.redirectUrl,
             sanitizedBody,
             latencyMs: Date.now() - start,
-            source: remote ? 'REMOTE_AGENT' : 'LOCAL_INSPECTOR'
+            source: remote ? 'REMOTE_AGENT' : 'LOCAL_INSPECTOR',
+            agentAnalysis: remote?.agentAnalysis,
+            agentReport: remote?.agentReport,
+            investigationPending: remote?.investigationPending
         };
     }
 

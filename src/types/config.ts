@@ -2,6 +2,8 @@ import { ThreatIncident } from './threat';
 import { GuardRequestContext, SecurityDecision } from './context';
 import { GuardLogger, MetricsExporter } from './logger';
 import { RemoteAgentConfig } from './remoteAgent';
+import { AuditLogger } from './audit';
+import { SharedStore } from './store';
 
 export type SecurityMode = 'block_threats' | 'monitor_only' | 'strict_zero_trust' | 'quarantine';
 export type DefaultAction = 'block' | 'monitor' | 'quarantine' | 'allow';
@@ -38,7 +40,13 @@ export interface UranoGuardConfig {
     apiKey?: string;
     incomingSecret?: string;
     timeoutMs?: number;
+    /** Default true. Opposite of failClosed. Remote/adapter errors allow the request. */
     failOpen?: boolean;
+    /**
+     * Default false. When true, remote-agent and adapter evaluation errors BLOCK
+     * instead of allowing. Mutually exclusive with failOpen: true.
+     */
+    failClosed?: boolean;
 
     remoteAgent?: RemoteAgentConfig;
 
@@ -93,6 +101,13 @@ export interface UranoGuardConfig {
 
     logger?: GuardLogger;
     metrics?: MetricsExporter;
+    /**
+     * Structured audit sink. Pass a function or `'json'` for JSON-lines on stdout.
+     * Events never include raw body, cookies, or Authorization.
+     */
+    auditLogger?: AuditLogger | 'json';
+    /** Shared cache + rate-limit store. Defaults to in-process MemoryStore. */
+    store?: SharedStore;
 
     onThreatDetected?: ThreatCallback;
     onBlock?: BlockHandler;

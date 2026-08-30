@@ -85,7 +85,7 @@ export class HttpAdapter extends AdapterBase {
                 if (next) next();
                 return true;
             } catch (err: any) {
-                if (this.guard.config.failOpen !== false) {
+                if (!this.failClosed()) {
                     this.guard.getLogger().warn('HTTP evaluation failed, failOpen=true', err);
                     if (next) next();
                     return true;

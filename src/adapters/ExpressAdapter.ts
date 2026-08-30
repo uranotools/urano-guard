@@ -53,7 +53,7 @@ export class ExpressAdapter extends AdapterBase {
                 }
                 next();
             } catch (err: any) {
-                if (this.guard.config.failOpen !== false) {
+                if (!this.failClosed()) {
                     this.guard.getLogger().warn('Express evaluation failed, failOpen=true', err);
                     return next();
                 }

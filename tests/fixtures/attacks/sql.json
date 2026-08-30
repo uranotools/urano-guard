@@ -7,5 +7,11 @@
   { "id": "drop-table", "body": "1; DROP TABLE sessions" },
   { "id": "information-schema", "body": "UNION SELECT table_name FROM information_schema.tables" },
   { "id": "path-tautology", "path": "/users?id=1'+OR+1=1", "body": {} },
-  { "id": "query-union", "query": { "q": "UNION SELECT * FROM users" }, "body": {} }
+  { "id": "query-union", "query": { "q": "UNION SELECT * FROM users" }, "body": {} },
+  { "id": "stacked-insert", "body": "1; INSERT INTO users VALUES ('hax','x')" },
+  { "id": "stacked-update", "body": "1; UPDATE users SET admin=1 WHERE id=1" },
+  { "id": "boolean-or-aa", "body": "admin' OR 'a'='a" },
+  { "id": "boolean-or-22", "body": "' OR 2=2--" },
+  { "id": "boolean-and-11", "body": "x' AND 1=1--" },
+  { "id": "waitfor-delay", "body": "1; WAITFOR DELAY '0:0:5'" }
 ]

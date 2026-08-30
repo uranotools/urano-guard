@@ -1,4 +1,5 @@
 import { UranoGuard } from '../core/UranoGuard';
+import { isFailClosed } from '../core/failPolicy';
 import { GuardRequestContext, SecurityDecision } from '../types/context';
 
 export interface BlockResponseWriter {
@@ -18,6 +19,10 @@ export abstract class AdapterBase {
 
     protected trustProxy(): boolean {
         return this.guard.config.trustProxy === true;
+    }
+
+    protected failClosed(): boolean {
+        return isFailClosed(this.guard.config);
     }
 
     protected async dispatchBlock(

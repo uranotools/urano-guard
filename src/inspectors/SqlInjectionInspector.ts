@@ -6,8 +6,14 @@ import { DetectionRule, matchRules } from './ruleEngine';
 
 const SQL_RULES: DetectionRule[] = [
     { pattern: /;\s*(DROP|DELETE|ALTER|TRUNCATE)\s+TABLE\b/i, name: 'SQLI_DESTRUCTIVE', category: 'SQL_INJECTION', severity: 'CRITICAL', riskScore: 90, summary: 'SQL injection attempt' },
+    { pattern: /;\s*INSERT\s+INTO\b/i, name: 'SQLI_STACKED_INSERT', category: 'SQL_INJECTION', severity: 'CRITICAL', riskScore: 88, summary: 'SQL injection attempt' },
+    { pattern: /;\s*UPDATE\s+[A-Za-z_][A-Za-z0-9_]{0,63}\s+SET\b/i, name: 'SQLI_STACKED_UPDATE', category: 'SQL_INJECTION', severity: 'CRITICAL', riskScore: 88, summary: 'SQL injection attempt' },
     { pattern: /UNION\s+SELECT\s[\s\S]{0,200}\sFROM\b/i, name: 'SQLI_UNION_SELECT', category: 'SQL_INJECTION', severity: 'CRITICAL', riskScore: 90, summary: 'SQL injection attempt' },
     { pattern: /('\s*OR\s+'?1'?\s*=\s*'?1)|(\bOR[\s+]+1[\s+]*=[\s+]*1\b)/i, name: 'SQLI_OR_TAUTOLOGY', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
+    { pattern: /'\s*OR\s+'[A-Za-z0-9]{0,8}'\s*=\s*'[A-Za-z0-9]{0,8}'?/i, name: 'SQLI_BOOLEAN_OR_CHAR', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
+    { pattern: /\bOR\s+\d{1,4}\s*=\s*\d{1,4}\b/i, name: 'SQLI_BOOLEAN_OR_NUM', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
+    { pattern: /'\s*AND\s+'?1'?\s*=\s*'?1/i, name: 'SQLI_BOOLEAN_AND', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
+    { pattern: /\bWAITFOR\s+DELAY\b/i, name: 'SQLI_WAITFOR', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
     { pattern: /\bSLEEP\s*\(\s*\d{1,4}\s*\)/i, name: 'SQLI_SLEEP', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 85, summary: 'SQL injection attempt' },
     { pattern: /\b(xp_cmdshell|information_schema)\b/i, name: 'SQLI_SYS', category: 'SQL_INJECTION', severity: 'HIGH', riskScore: 88, summary: 'SQL injection attempt' }
 ];

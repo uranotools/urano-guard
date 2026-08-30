@@ -60,7 +60,7 @@ export class EdgeAdapter extends AdapterBase {
                 const reqCtx = await this.normalizeRequest(request);
                 return await this.guard.inspect(reqCtx);
             } catch (err: any) {
-                if (this.guard.config.failOpen !== false) {
+                if (!this.failClosed()) {
                     this.guard.getLogger().warn('Edge evaluation failed, failOpen=true', err);
                     return {
                         allowed: true,
