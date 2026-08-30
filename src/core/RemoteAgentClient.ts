@@ -246,7 +246,7 @@ export class RemoteAgentClient {
             await this.persistMemory(context, data);
         }
 
-        while (true) {
+        for (let step = 0; step <= maxFollow; step++) {
             const need = !legacy ? parseNeed(data) : null;
             const canAsync = opts.phase === 'sync'
                 && this.cfg.investigateAsync?.enabled === true
@@ -309,6 +309,11 @@ export class RemoteAgentClient {
             data = next.data;
             await this.persistMemory(context, data);
         }
+
+        if (hasEnforcementVerdict(data)) {
+            return { ok: true, pendingInvestigate: false, data };
+        }
+        return { ok: false, reason: 'need_loop' };
     }
 
     private maxFollowUps(): number {
