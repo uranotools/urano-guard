@@ -45,9 +45,13 @@ cd urano-guard
 npm install
 
 # 3. Check types and lint
-npx tsc --noEmit
+npm run typecheck
+npm run lint
 
-# 4. Build output
+# 4. Tests
+npm test
+
+# 5. Build output
 npm run build
 ```
 
@@ -95,3 +99,15 @@ export class CustomExploitInspector extends InspectorBase {
 1. **Zero External Heavy Dependencies:** The core SDK must remain lightweight with minimal dependencies.
 2. **Sub-millisecond Local Execution:** All local regex patterns must be optimized to prevent ReDoS (Regular Expression Denial of Service).
 3. **Fail-Safe Design:** Always handle exceptions gracefully so unexpected inputs do not crash the host HTTP process.
+
+---
+
+## Releasing
+
+1. Bump `version` in `package.json` (semver).
+2. Add a section to [CHANGELOG.md](CHANGELOG.md).
+3. `npm test`, `npm run lint`, `npm run build`.
+4. Commit, tag `vX.Y.Z`, push the tag.
+5. Create a **GitHub Release** for that tag — [publish.yml](.github/workflows/publish.yml) runs lint, tests, and `npm publish --access public --provenance`.
+
+Do not publish from a local machine unless npm provenance is not required.

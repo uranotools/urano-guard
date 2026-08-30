@@ -1,6 +1,7 @@
 import { UranoGuardConfig } from '../types/config';
 import { GuardRequestContext, SecurityDecision } from '../types/context';
 import { ThreatIncident } from '../types/threat';
+import { GuardLogger, resolveLogger } from '../types/logger';
 import { EventBus } from './EventBus';
 import { CacheManager } from './CacheManager';
 import { ThreatRegistry } from './ThreatRegistry';
@@ -9,13 +10,18 @@ import { HoneypotRouter } from './HoneypotRouter';
 import { InspectorBase } from '../inspectors/InspectorBase';
 import { PromptInjectionInspector } from '../inspectors/PromptInjectionInspector';
 import { MaliciousUrlInspector } from '../inspectors/MaliciousUrlInspector';
-import { InjectionSqlCmdInspector } from '../inspectors/InjectionSqlCmdInspector';
+import { SqlInjectionInspector } from '../inspectors/SqlInjectionInspector';
+import { CommandInjectionInspector } from '../inspectors/CommandInjectionInspector';
+import { XssInspector } from '../inspectors/XssInspector';
 import { BotFuzzingInspector } from '../inspectors/BotFuzzingInspector';
 import { PaddingEvasionInspector } from '../inspectors/PaddingEvasionInspector';
+import { JwtTamperingInspector } from '../inspectors/JwtTamperingInspector';
+import { GraphqlAbuseInspector } from '../inspectors/GraphqlAbuseInspector';
 import { ExpressAdapter } from '../adapters/ExpressAdapter';
 import { FastifyAdapter } from '../adapters/FastifyAdapter';
 import { EdgeAdapter } from '../adapters/EdgeAdapter';
 import { HttpAdapter } from '../adapters/HttpAdapter';
+import { HonoAdapter } from '../adapters/HonoAdapter';
 
 export class UranoGuard {
     readonly config: UranoGuardConfig;
@@ -24,26 +30,41 @@ export class UranoGuard {
     readonly cache: CacheManager;
     readonly evaluator: Evaluator;
     readonly honeypot?: HoneypotRouter;
-    private customInspectors: InspectorBase[] = [];
+    private readonly logger: GuardLogger;
 
     constructor(config: UranoGuardConfig = {}) {
         this.config = config;
-        this.eventBus = new EventBus();
+        this.logger = resolveLogger(config.logger);
+        this.eventBus = new EventBus(this.logger);
         this.registry = new ThreatRegistry(
             config.blockedIdentifiers || [],
             config.whitelistedIdentifiers || []
         );
         this.cache = new CacheManager(config.cacheTtlMs || 60_000);
 
+        const sqlOn = config.inspectors?.sqlAndCommands !== false && config.inspectors?.sqlInjection !== false;
+        const cmdOn = config.inspectors?.sqlAndCommands !== false && config.inspectors?.commandInjection !== false;
+        const xssOn = config.inspectors?.sqlAndCommands !== false && config.inspectors?.xss !== false;
+
         const defaultInspectors: InspectorBase[] = [
             new PromptInjectionInspector(config.inspectors?.promptInjection !== false),
-            new MaliciousUrlInspector(config.inspectors?.maliciousUrls !== false),
-            new InjectionSqlCmdInspector(config.inspectors?.sqlAndCommands !== false),
+            new MaliciousUrlInspector(
+                config.inspectors?.maliciousUrls !== false,
+                config.inspectors?.maliciousUrlsAllowHosts || []
+            ),
+            new SqlInjectionInspector(sqlOn),
+            new CommandInjectionInspector(cmdOn),
+            new XssInspector(xssOn),
             new BotFuzzingInspector(config.inspectors?.botFuzzing !== false),
-            new PaddingEvasionInspector(config.inspectors?.paddingEvasion !== false)
+            new PaddingEvasionInspector(config.inspectors?.paddingEvasion !== false),
+            new JwtTamperingInspector(config.inspectors?.jwtTampering !== false),
+            new GraphqlAbuseInspector(config.inspectors?.graphqlAbuse !== false)
         ];
 
-        this.evaluator = new Evaluator(this.config, this.registry, this.cache, defaultInspectors);
+        this.evaluator = new Evaluator(this.config, this.registry, this.cache, defaultInspectors, {
+            logger: this.logger,
+            metrics: config.metrics
+        });
 
         if (config.honeypot?.tarpitEnabled || config.honeypot?.honeyTokensEnabled) {
             this.honeypot = new HoneypotRouter({
@@ -59,10 +80,19 @@ export class UranoGuard {
                 this.config.onThreatDetected!(data.threat, data.req);
             });
         }
+
+        if (config.metrics) {
+            this.eventBus.on('requestBlocked', () => config.metrics!.increment('requestBlocked', 1));
+            this.eventBus.on('requestAllowed', () => config.metrics!.increment('requestAllowed', 1));
+            this.eventBus.on('threatDetected', () => config.metrics!.increment('threatDetected', 1));
+        }
+    }
+
+    getLogger(): GuardLogger {
+        return this.logger;
     }
 
     async inspect(context: GuardRequestContext): Promise<SecurityDecision> {
-        // Detectar si el atacante regresó con un honey-token activo
         if (this.honeypot) {
             const honeyHit = this.honeypot.detectHoneyTokenAccess(context.body, context.headers as any);
             if (honeyHit) {
@@ -85,10 +115,10 @@ export class UranoGuard {
     }
 
     registerInspector(inspector: InspectorBase): void {
-        this.customInspectors.push(inspector);
+        this.evaluator.addInspector(inspector);
     }
 
-    block(identifier: string): void { this.registry.block(identifier); }
+    block(identifier: string, ttlMs?: number): void { this.registry.block(identifier, ttlMs); }
     unblock(identifier: string): void { this.registry.unblock(identifier); }
 
     express(): (req: any, res: any, next: any) => void {
@@ -105,6 +135,10 @@ export class UranoGuard {
 
     http(): (req: any, res: any, next?: () => void) => Promise<boolean> {
         return new HttpAdapter(this).handler();
+    }
+
+    hono() {
+        return new HonoAdapter(this).middleware();
     }
 }
 

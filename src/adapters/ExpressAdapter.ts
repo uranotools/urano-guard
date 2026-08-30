@@ -1,32 +1,40 @@
 import { AdapterBase } from './AdapterBase';
 import { GuardRequestContext, SecurityDecision } from '../types/context';
+import { firstHeader, pickClientIp, pickSenderId } from '../utils/identity';
 
 export class ExpressAdapter extends AdapterBase {
     normalizeRequest(req: any): GuardRequestContext {
+        const headers = req.headers || {};
+        const ip = pickClientIp({
+            trustProxy: this.trustProxy(),
+            socketIp: req.socket?.remoteAddress || req.connection?.remoteAddress,
+            forwardedFor: headers['x-forwarded-for'],
+            realIp: firstHeader(headers, 'x-real-ip'),
+            fallback: req.ip
+        });
         return {
-            ip: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
+            ip,
             method: req.method || 'GET',
             path: req.originalUrl || req.url || '/',
-            headers: req.headers || {},
+            headers,
             query: req.query || {},
             body: req.body || {},
             rawBody: req.rawBody,
-            senderId: req.headers['x-user-id'] || req.headers['x-sender-id'] || req.body?.sender || req.ip,
+            senderId: pickSenderId({
+                trustProxy: this.trustProxy(),
+                ip,
+                headerUserId: firstHeader(headers, 'x-user-id'),
+                headerSenderId: firstHeader(headers, 'x-sender-id')
+            }),
             timestamp: Date.now()
         };
     }
 
     handleBlock(res: any, decision: SecurityDecision, reqCtx: GuardRequestContext): any {
-        if (this.guard.config.onBlock) {
-            return this.guard.config.onBlock(decision, reqCtx);
-        }
-
-        return res.status(403).json({
-            error: 'FORBIDDEN_BY_CYBER_GUARD',
-            message: decision.reason || 'Petición bloqueada por las políticas de seguridad de Urano.',
-            riskScore: decision.riskScore,
-            incidentId: decision.threats[0]?.id
-        });
+        return this.dispatchBlock({
+            json: (status, body) => res.status(status).json(body),
+            redirect: (url) => res.redirect(url)
+        }, decision, reqCtx);
     }
 
     middleware(): (req: any, res: any, next: any) => void {
@@ -39,19 +47,17 @@ export class ExpressAdapter extends AdapterBase {
                     return this.handleBlock(res, decision, reqCtx);
                 }
 
-                // Inyectar contexto de decisión en la petición
                 req.uranoGuard = decision;
                 if (decision.sanitizedBody) {
                     req.body = decision.sanitizedBody;
                 }
-
                 next();
             } catch (err: any) {
                 if (this.guard.config.failOpen !== false) {
-                    console.warn('[UranoGuard Express] Fallo en evaluación, aplicando failOpen: true', err);
+                    this.guard.getLogger().warn('Express evaluation failed, failOpen=true', err);
                     return next();
                 }
-                res.status(500).json({ error: 'SECURITY_GATEWAY_ERROR', message: err.message });
+                res.status(500).json({ error: 'SECURITY_GATEWAY_ERROR', message: 'Security gateway error' });
             }
         };
     }

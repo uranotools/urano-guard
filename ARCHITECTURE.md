@@ -235,8 +235,10 @@ guard.eventBus.on('honeyTokenAccessed', ({ token, req }) => {
 | **Semantic Campaign Rate Limiter** | ✅ Complete | High | v1.0.0 |
 | **Behavioral Request Fingerprinter** | ✅ Complete | High | v1.0.0 |
 | **Decoy Honeypot & Tarpit Engine** | ✅ Complete | High | v1.0.0 |
-| **GraphQL Introspection & Depth Inspector** | 🚧 Planned | Medium | v1.1.0 |
-| **JWT Tampering & Algorithm Confusion Inspector** | 🚧 Planned | High | v1.1.0 |
-| **Hono & Elysia.js Adapters** | 🚧 Planned | Medium | v1.1.0 |
-| **OpenTelemetry / Prometheus Metrics Exporter** | 🚧 Planned | High | v1.2.0 |
+| **GraphQL Introspection & Depth Inspector** | ✅ Complete | Medium | v1.0.0 |
+| **JWT Tampering & Algorithm Confusion Inspector** | ✅ Complete | High | v1.0.0 |
+| **Hono Adapter** | ✅ Complete | Medium | v1.0.0 |
+| **Configurable BYO Remote Agent** | ✅ Complete | High | v1.0.0 |
+| **OpenTelemetry / Prometheus Metrics Exporter** | 🚧 Interface + EventBus counters | High | v1.2.0 |
+| **Elysia.js Adapter** | 🚧 Planned | Medium | v1.1.0 |
 | **WebAssembly (WASM) Custom Rules Engine** | 💡 Proposed | Low | v2.0.0 |

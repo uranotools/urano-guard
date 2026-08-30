@@ -1,0 +1,11 @@
+[
+  { "id": "or-tautology", "body": "id=1' OR 1=1" },
+  { "id": "or-comment", "body": "admin' OR 1=1--" },
+  { "id": "union-select", "body": "1 UNION SELECT username, password FROM users" },
+  { "id": "union-comments", "body": "1 UN/**/ION SELECT name FROM accounts" },
+  { "id": "sleep", "body": "1; SLEEP(5)" },
+  { "id": "drop-table", "body": "1; DROP TABLE sessions" },
+  { "id": "information-schema", "body": "UNION SELECT table_name FROM information_schema.tables" },
+  { "id": "path-tautology", "path": "/users?id=1'+OR+1=1", "body": {} },
+  { "id": "query-union", "query": { "q": "UNION SELECT * FROM users" }, "body": {} }
+]

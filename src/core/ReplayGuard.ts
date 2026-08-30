@@ -1,8 +1,9 @@
+import { GuardLogger, createSilentLogger } from '../types/logger';
+
 export interface ReplayGuardOptions {
-    /** Ventana de tolerancia de tiempo en ms (default: 300_000 = 5 min) */
     timestampWindowMs?: number;
-    /** Tamaño máximo del cache de nonces en memoria (default: 20000) */
     maxNonces?: number;
+    logger?: GuardLogger;
 }
 
 export interface ReplayCheckResult {
@@ -11,20 +12,19 @@ export interface ReplayCheckResult {
 }
 
 export class ReplayGuard {
-    private usedNonces: Map<string, number>; // nonce -> timestamp de uso
+    private usedNonces: Map<string, number>;
     private windowMs: number;
     private maxNonces: number;
+    private logger: GuardLogger;
+    private lastSweep = 0;
 
     constructor(opts: ReplayGuardOptions = {}) {
         this.windowMs = opts.timestampWindowMs ?? 300_000;
         this.maxNonces = opts.maxNonces ?? 20_000;
         this.usedNonces = new Map();
+        this.logger = opts.logger ?? createSilentLogger();
     }
 
-    /**
-     * Valida que el timestamp sea reciente y que el nonce no haya sido visto antes.
-     * Cabeceras esperadas: x-urano-timestamp (epoch ms), x-urano-nonce (UUID o token único).
-     */
     check(headers: Record<string, string | string[] | undefined>): ReplayCheckResult {
         const rawTs = headers['x-urano-timestamp'] || headers['x-timestamp'];
         const nonce = headers['x-urano-nonce'] || headers['x-nonce'];
@@ -44,19 +44,27 @@ export class ReplayGuard {
             return { valid: false, reason: 'REPLAY_DETECTED' };
         }
 
-        // Registrar el nonce y limpiar los expirados (LRU ligero)
         this.usedNonces.set(nonceStr, now);
         this.sweepExpired(now);
-
         return { valid: true };
     }
 
     private sweepExpired(now: number): void {
-        if (this.usedNonces.size < this.maxNonces) return;
+        if (now - this.lastSweep < 1_000 && this.usedNonces.size < this.maxNonces) return;
+        this.lastSweep = now;
         const cutoff = now - this.windowMs;
-        for (const [k, v] of this.usedNonces) {
-            if (v < cutoff) this.usedNonces.delete(k);
-            if (this.usedNonces.size < this.maxNonces * 0.8) break;
+        for (const [key, value] of this.usedNonces) {
+            if (value < cutoff) this.usedNonces.delete(key);
+        }
+        if (this.usedNonces.size > this.maxNonces) {
+            const overflow = this.usedNonces.size - this.maxNonces;
+            let removed = 0;
+            for (const key of this.usedNonces.keys()) {
+                this.usedNonces.delete(key);
+                removed++;
+                if (removed >= overflow) break;
+            }
+            this.logger.warn(`Replay nonce store trimmed by ${removed} entries`);
         }
     }
 }

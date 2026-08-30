@@ -9,16 +9,20 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Security Policy](https://img.shields.io/badge/Security-Policy-red.svg)](SECURITY.md)
 
-> **High-Resilience Security Gateway & AI WAF Middleware** for APIs, Webhooks, LLM Applications, and Government / Enterprise Infrastructure.
+> **Local-first security gateway & AI WAF middleware** for APIs, webhooks, and LLM applications.
 
-Designed to defend against **autonomous adversarial AI agents, prompt injection jailbreaks, DDoS/fuzzing campaigns, replay attacks, and data exfiltration (PII)** with sub-millisecond local latency and zero hard dependencies.
+Heuristic inspectors run in-process (no cloud required). An optional **custom webhook** can add a second analysis layer. See [CUSTOM_AGENT.md](CUSTOM_AGENT.md) if you do not use Urano Cloud.
+
+### What’s new in 1.1
+
+BYO remote agent, text normalization + evasion corpus, split SQLi/CMD/XSS, JWT/GraphQL inspectors, Hono, route policies, and safer defaults (`trustProxy` off, 403 without score leak). Full notes: [CHANGELOG.md](CHANGELOG.md). Local chat + agent demo: [examples/README.md](examples/README.md).
 
 ---
 
 ## 💡 How It Works (At a Glance)
 
 * 🟢 **Works 100% Locally & Standalone**: You do **NOT** need any external server, cloud account, or remote AI to get started. Just install and protect your API in 2 lines of code.
-* ⚡ **Cost & Resource Saver**: Fast local heuristics (<2ms) block 99% of obvious attacks (SQLi, prompt overrides, large padding evasions) **instantly without wasting external LLM tokens or bandwidth**.
+* ⚡ **Cost & Resource Saver**: Fast local heuristics typically finish in a few milliseconds and block obvious attacks (SQLi, prompt overrides, large padding evasions) **without calling a remote model**.
 * 🧠 **Optional Deep AI Webhook**: For subtle, complex adversarial attacks, you can optionally connect a remote Urano Cyber Agent.
 * 🛡️ **Zero Downtime Guarantee (Fail-Open)**: If a remote webhook times out or fails, the built-in **Circuit Breaker** automatically falls back to local inspection mode so your production service never stops.
 
@@ -34,8 +38,8 @@ Designed to defend against **autonomous adversarial AI agents, prompt injection 
 * 📊 **Semantic Rate Limiting**: Intent-based rate limiting to block distributed reconnaissance campaigns targeting identical endpoints across multiple rotating IPs.
 * 🕵️ **Behavioral Fingerprinting**: Identifies repeated attackers across proxy/Tor networks regardless of IP rotation.
 * 🍯 **Active Defense (Honeypot & Tarpit)**: Slows down automated scrapers with configurable tarpit delays and generates traceable honey-tokens for SOC telemetry.
-* 🔒 **PII Masker & Sanitizer**: Automatic masking of credit cards, national IDs, emails, API keys, and phone numbers before payloads reach your handlers.
-* 🔌 **Universal Framework Adapters**: Drop-in middlewares for **Express, Fastify, Edge (Cloudflare / Vercel), and native Node.js HTTP**.
+* 🔒 **PII Masker & Sanitizer**: Masks Luhn-valid credit cards, emails, E.164 phones, and common API key prefixes (`sk-`, `ghp_`, `AKIA`, `xoxb-`, …) on allowed requests.
+* 🔌 **Framework adapters**: Express, Fastify, Hono, Edge (Cloudflare / Vercel), and native Node.js HTTP.
 
 ---
 
@@ -54,6 +58,28 @@ yarn add @uranotools/urano-guard
 # bun
 bun add @uranotools/urano-guard
 ```
+
+---
+
+## 🧠 Custom remote agent (optional)
+
+You do **not** need Urano Cloud. Point `remoteAgent.url` at any HTTPS endpoint you control (your LLM, SIEM, or a 20-line HTTP server). Configure **which fields** to send, auth (Bearer / header / HMAC), and when to call it.
+
+```ts
+const guard = createUranoGuard({
+    remoteAgent: {
+        url: process.env.AGENT_URL, // e.g. https://security.internal/analyze
+        invokeWhen: 'local_clean',
+        auth: { type: 'bearer', token: process.env.AGENT_TOKEN },
+        payload: {
+            include: ['method', 'path', 'body', 'localThreats'],
+            extra: { app: 'checkout' }
+        }
+    }
+});
+```
+
+Full request/response contract, privacy notes, and a sample server: **[CUSTOM_AGENT.md](CUSTOM_AGENT.md)**.
 
 ---
 
@@ -195,7 +221,7 @@ Urano Guard includes a <b>Tri-State Circuit Breaker</b> with a <b>Fail-Open</b> 
 <details>
 <summary><b>4. What is the performance overhead on my API?</b></summary>
 <br/>
-Cache hits resolve in <b>&lt;1ms</b>. Cold heuristic evaluations take between <b>1ms and 3ms</b>. The core SDK has zero heavy dependencies (no bundled models, no C++ compilation steps).
+Cache hits are memory lookups. Cold heuristic evaluations are typically a few milliseconds depending on payload size. The core SDK has zero runtime dependencies (no bundled models).
 </details>
 
 ---
@@ -206,16 +232,19 @@ Cache hits resolve in <b>&lt;1ms</b>. Cold heuristic evaluations take between <b
 import { UranoGuardConfig } from '@uranotools/urano-guard';
 
 const config: UranoGuardConfig = {
-    // Security Operating Mode
-    securityMode: 'block_threats', // 'block_threats' | 'strict_zero_trust' | 'monitor_only' | 'quarantine'
-
-    // Remote Deep AI Analysis (Optional — leave undefined for 100% local operation)
-    agentWebhookUrl: 'https://agent.urano.cloud/webhook',
-    apiKey: process.env.URANO_API_KEY,
-    timeoutMs: 1500,
+    securityMode: 'block_threats', // start with 'monitor_only' in production to measure false positives
+    trustProxy: false,
+    exposeDecisionDetails: false,
     failOpen: true,
+    maxBodyBytes: 256 * 1024,
 
-    // Circuit Breaker
+    remoteAgent: {
+        url: process.env.AGENT_URL, // omit for 100% local
+        timeoutMs: 1500,
+        invokeWhen: 'local_clean',
+        auth: { type: 'bearer', token: process.env.AGENT_TOKEN }
+    },
+
     circuitBreaker: {
         enabled: true,
         latencyThresholdMs: 800,
@@ -223,36 +252,42 @@ const config: UranoGuardConfig = {
         recoveryTimeMs: 30_000
     },
 
-    // Anti-Replay Protection
     replayGuard: {
         enabled: false,
         timestampWindowMs: 300_000,
         strict: false
     },
 
-    // Semantic Rate Limiting
     semanticRateLimit: {
-        enabled: true,
+        enabled: false,
         windowMs: 60_000,
         maxRequestsPerWindow: 60,
         campaignIpThreshold: 20
     },
 
-    // Active Defense / Honeypot
     honeypot: {
-        tarpitEnabled: true,
+        tarpitEnabled: false,
         tarpitDelayMs: 4_000,
-        honeyTokensEnabled: true
+        honeyTokensEnabled: false
     },
 
-    // Inspectores
+    routePolicies: [
+        { path: '/health', method: 'GET', skip: true }
+    ],
+
     inspectors: {
         promptInjection: true,
         maliciousUrls: true,
         sqlAndCommands: true,
+        sqlInjection: true,
+        commandInjection: true,
+        xss: true,
         botFuzzing: true,
         piiDataMasking: true,
-        paddingEvasion: true
+        paddingEvasion: true,
+        jwtTampering: true,
+        graphqlAbuse: true,
+        maliciousUrlsAllowHosts: ['api.internal.example']
     }
 };
 ```
@@ -261,7 +296,7 @@ const config: UranoGuardConfig = {
 
 ## 🛠️ Advanced Extensibility & Architecture Blueprint
 
-Looking to contribute new inspectors, custom adapters, or understand the internals? Check the [**ARCHITECTURE.md**](ARCHITECTURE.md) and [**DEV_README.md**](DEV_README.md).
+Looking to contribute new inspectors, custom adapters, or understand the internals? Check [**ARCHITECTURE.md**](ARCHITECTURE.md) and [**DEV_README.md**](DEV_README.md). To configure a webhook that is **not** Urano Cloud, read [**CUSTOM_AGENT.md**](CUSTOM_AGENT.md).
 
 ---
 

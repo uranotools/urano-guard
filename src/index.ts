@@ -13,22 +13,35 @@ export { HoneypotRouter } from './core/HoneypotRouter';
 export type { HoneypotConfig, HoneypotDecision } from './core/HoneypotRouter';
 export { RequestFingerprinter } from './core/RequestFingerprinter';
 export type { FingerprintResult } from './core/RequestFingerprinter';
+export { RemoteAgentClient, resolveRemoteAgentConfig, shouldInvokeRemoteWithRange } from './core/RemoteAgentClient';
+export { matchRoutePath, resolveRoutePolicy } from './core/routePolicy';
 
-export { InspectorBase } from './inspectors/InspectorBase';
+export { InspectorBase, flattenIncidents } from './inspectors/InspectorBase';
 export { PromptInjectionInspector } from './inspectors/PromptInjectionInspector';
 export { MaliciousUrlInspector } from './inspectors/MaliciousUrlInspector';
 export { InjectionSqlCmdInspector } from './inspectors/InjectionSqlCmdInspector';
+export { SqlInjectionInspector } from './inspectors/SqlInjectionInspector';
+export { CommandInjectionInspector } from './inspectors/CommandInjectionInspector';
+export { XssInspector } from './inspectors/XssInspector';
 export { BotFuzzingInspector } from './inspectors/BotFuzzingInspector';
 export { PaddingEvasionInspector } from './inspectors/PaddingEvasionInspector';
-export { PiiDataMasker } from './inspectors/PiiDataMasker';
+export { PiiDataMasker, luhnValid } from './inspectors/PiiDataMasker';
+export { JwtTamperingInspector } from './inspectors/JwtTamperingInspector';
+export { GraphqlAbuseInspector } from './inspectors/GraphqlAbuseInspector';
 
 export { ExpressAdapter } from './adapters/ExpressAdapter';
 export { FastifyAdapter } from './adapters/FastifyAdapter';
 export { EdgeAdapter } from './adapters/EdgeAdapter';
 export { HttpAdapter } from './adapters/HttpAdapter';
+export { HonoAdapter } from './adapters/HonoAdapter';
+export { AdapterBase } from './adapters/AdapterBase';
 
 export * from './types/config';
 export * from './types/threat';
 export * from './types/context';
-export { verifyHmacSignature } from './utils/crypto';
+export * from './types/logger';
+export * from './types/remoteAgent';
+export { verifyHmacSignature, signHmac, sha256Hex, randomToken } from './utils/crypto';
 export { createMtlsAgent, extractClientCertCN, validateClientCert } from './utils/mtls';
+export { collectInspectionText, stringifySafe, normalizeInspectionText, stripSqlComments } from './utils/inspectText';
+export { pickClientIp, pickSenderId } from './utils/identity';

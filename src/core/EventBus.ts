@@ -1,7 +1,18 @@
+import { GuardLogger, createSilentLogger } from '../types/logger';
+
 type EventHandler<T = any> = (data: T) => void | Promise<void>;
 
 export class EventBus {
     private handlers = new Map<string, Set<EventHandler>>();
+    private logger: GuardLogger;
+
+    constructor(logger?: GuardLogger) {
+        this.logger = logger ?? createSilentLogger();
+    }
+
+    setLogger(logger: GuardLogger): void {
+        this.logger = logger;
+    }
 
     on<T = any>(event: string, handler: EventHandler<T>): () => void {
         if (!this.handlers.has(event)) {
@@ -22,7 +33,7 @@ export class EventBus {
             try {
                 await handler(data);
             } catch (err: any) {
-                console.error(`[UranoGuard EventBus] Error en listener de '${event}':`, err);
+                this.logger.error(`EventBus listener error for '${event}'`, err);
             }
         }
     }

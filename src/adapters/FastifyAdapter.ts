@@ -1,45 +1,62 @@
 import { AdapterBase } from './AdapterBase';
 import { GuardRequestContext, SecurityDecision } from '../types/context';
+import { firstHeader, pickClientIp, pickSenderId } from '../utils/identity';
 
 export class FastifyAdapter extends AdapterBase {
     normalizeRequest(request: any): GuardRequestContext {
+        const headers = request.headers || {};
+        const ip = pickClientIp({
+            trustProxy: this.trustProxy(),
+            socketIp: request.raw?.socket?.remoteAddress,
+            forwardedFor: headers['x-forwarded-for'],
+            realIp: firstHeader(headers, 'x-real-ip'),
+            fallback: request.ip
+        });
         return {
-            ip: request.ip || request.headers['x-forwarded-for'] || '127.0.0.1',
+            ip,
             method: request.method || 'GET',
             path: request.url || '/',
-            headers: request.headers || {},
+            headers,
             query: request.query || {},
             body: request.body || {},
-            senderId: request.headers['x-user-id'] || request.ip,
+            rawBody: request.rawBody,
+            senderId: pickSenderId({
+                trustProxy: this.trustProxy(),
+                ip,
+                headerUserId: firstHeader(headers, 'x-user-id'),
+                headerSenderId: firstHeader(headers, 'x-sender-id')
+            }),
             timestamp: Date.now()
         };
     }
 
     handleBlock(reply: any, decision: SecurityDecision, reqCtx: GuardRequestContext): any {
-        if (this.guard.config.onBlock) {
-            return this.guard.config.onBlock(decision, reqCtx);
-        }
-
-        return reply.code(403).send({
-            error: 'FORBIDDEN_BY_CYBER_GUARD',
-            message: decision.reason || 'Petición bloqueada por las políticas de seguridad de Urano.',
-            riskScore: decision.riskScore,
-            incidentId: decision.threats[0]?.id
-        });
+        return this.dispatchBlock({
+            json: (status, body) => reply.code(status).send(body),
+            redirect: (url) => reply.redirect(url)
+        }, decision, reqCtx);
     }
 
     hook(): (request: any, reply: any) => Promise<void> {
         return async (request: any, reply: any) => {
-            const reqCtx = this.normalizeRequest(request);
-            const decision = await this.guard.inspect(reqCtx);
+            try {
+                const reqCtx = this.normalizeRequest(request);
+                const decision = await this.guard.inspect(reqCtx);
 
-            if (!decision.allowed) {
-                return this.handleBlock(reply, decision, reqCtx);
-            }
+                if (!decision.allowed) {
+                    return this.handleBlock(reply, decision, reqCtx);
+                }
 
-            request.uranoGuard = decision;
-            if (decision.sanitizedBody) {
-                request.body = decision.sanitizedBody;
+                request.uranoGuard = decision;
+                if (decision.sanitizedBody) {
+                    request.body = decision.sanitizedBody;
+                }
+            } catch (err: any) {
+                if (this.guard.config.failOpen !== false) {
+                    this.guard.getLogger().warn('Fastify evaluation failed, failOpen=true', err);
+                    return;
+                }
+                reply.code(500).send({ error: 'SECURITY_GATEWAY_ERROR', message: 'Security gateway error' });
             }
         };
     }

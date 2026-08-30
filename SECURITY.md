@@ -2,7 +2,7 @@
 
 ## 🛡️ Supported Versions
 
-We provide security updates and patches for the following versions of `@urano/guard`:
+We provide security updates and patches for the following versions of `@uranotools/urano-guard`:
 
 | Version | Supported          |
 | ------- | ------------------ |
@@ -13,7 +13,7 @@ We provide security updates and patches for the following versions of `@urano/gu
 
 ## 🚨 Reporting a Vulnerability
 
-We take the security of `@urano/guard` and the applications protected by it seriously. If you discover a security vulnerability, please do **NOT** open a public GitHub issue.
+We take the security of `@uranotools/urano-guard` and the applications protected by it seriously. If you discover a security vulnerability, please do **NOT** open a public GitHub issue.
 
 ### Reporting Channels
 Please report security vulnerabilities by emailing:

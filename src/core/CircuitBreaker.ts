@@ -1,14 +1,13 @@
+import { GuardLogger, createSilentLogger } from '../types/logger';
+
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
 export interface CircuitBreakerOptions {
-    /** Latencia máxima en ms antes de abrir el circuito (default: 800) */
     latencyThresholdMs?: number;
-    /** Número de fallos consecutivos antes de abrir el circuito (default: 5) */
     failureThreshold?: number;
-    /** Tiempo en ms hasta intentar recuperación HALF_OPEN (default: 30000) */
     recoveryTimeMs?: number;
-    /** Número de pruebas en HALF_OPEN que deben ser exitosas para cerrar (default: 3) */
     probeSuccessThreshold?: number;
+    logger?: GuardLogger;
 }
 
 export class CircuitBreaker {
@@ -16,32 +15,34 @@ export class CircuitBreaker {
     private failures = 0;
     private lastFailureTime = 0;
     private probeSuccesses = 0;
-    private opts: Required<CircuitBreakerOptions>;
+    private probeInFlight = false;
+    private opts: Required<Omit<CircuitBreakerOptions, 'logger'>> & { logger: GuardLogger };
 
     constructor(opts: CircuitBreakerOptions = {}) {
         this.opts = {
             latencyThresholdMs: opts.latencyThresholdMs ?? 800,
             failureThreshold: opts.failureThreshold ?? 5,
             recoveryTimeMs: opts.recoveryTimeMs ?? 30_000,
-            probeSuccessThreshold: opts.probeSuccessThreshold ?? 3
+            probeSuccessThreshold: opts.probeSuccessThreshold ?? 3,
+            logger: opts.logger ?? createSilentLogger()
         };
     }
 
     getState(): CircuitState { return this.state; }
 
-    /** Llama si el upstream respondió lento o con error. */
     recordFailure(): void {
+        this.probeInFlight = false;
         this.failures++;
         this.lastFailureTime = Date.now();
         if (this.state === 'HALF_OPEN' || this.failures >= this.opts.failureThreshold) {
             this.state = 'OPEN';
             this.probeSuccesses = 0;
-            console.warn(`[UranoGuard CircuitBreaker] Estado: OPEN. Fallback a modo heurístico local.`);
+            this.opts.logger.warn('Circuit breaker OPEN — falling back to local heuristics');
         }
     }
 
-    /** Llama si el upstream respondió con éxito dentro del tiempo umbral. */
     recordSuccess(latencyMs: number): void {
+        this.probeInFlight = false;
         if (latencyMs > this.opts.latencyThresholdMs) {
             this.recordFailure();
             return;
@@ -52,17 +53,13 @@ export class CircuitBreaker {
                 this.state = 'CLOSED';
                 this.failures = 0;
                 this.probeSuccesses = 0;
-                console.info(`[UranoGuard CircuitBreaker] Estado: CLOSED. Servicio recuperado.`);
+                this.opts.logger.info('Circuit breaker CLOSED — remote agent recovered');
             }
         } else if (this.state === 'CLOSED') {
             this.failures = Math.max(0, this.failures - 1);
         }
     }
 
-    /**
-     * Devuelve true si el circuito PERMITE llamar al upstream.
-     * Implementa la transición automática OPEN → HALF_OPEN tras recoveryTimeMs.
-     */
     canCallRemote(): boolean {
         if (this.state === 'CLOSED') return true;
 
@@ -71,13 +68,14 @@ export class CircuitBreaker {
             if (elapsed >= this.opts.recoveryTimeMs) {
                 this.state = 'HALF_OPEN';
                 this.probeSuccesses = 0;
-                console.info(`[UranoGuard CircuitBreaker] Estado: HALF_OPEN. Iniciando prueba de recuperación.`);
-                return true; // Permite una sola petición de prueba
+                this.opts.logger.info('Circuit breaker HALF_OPEN — sending a single probe');
+            } else {
+                return false;
             }
-            return false; // Circuito abierto, modo local activado
         }
 
-        // HALF_OPEN: solo deja pasar 1 petición de sonda a la vez
+        if (this.probeInFlight) return false;
+        this.probeInFlight = true;
         return true;
     }
 }

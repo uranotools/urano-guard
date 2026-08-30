@@ -22,10 +22,13 @@ export class CacheManager {
             this.cache.delete(key);
             return null;
         }
+        this.cache.delete(key);
+        this.cache.set(key, entry);
         return { ...entry.decision, source: 'CACHE' };
     }
 
     set(key: string, decision: SecurityDecision, ttlMs?: number): void {
+        if (this.cache.has(key)) this.cache.delete(key);
         if (this.cache.size >= this.maxEntries) {
             const oldestKey = this.cache.keys().next().value;
             if (oldestKey) this.cache.delete(oldestKey);
@@ -38,5 +41,9 @@ export class CacheManager {
 
     clear(): void {
         this.cache.clear();
+    }
+
+    get size(): number {
+        return this.cache.size;
     }
 }

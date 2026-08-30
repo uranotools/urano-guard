@@ -33,10 +33,11 @@
 │  6. Local Heuristic Inspectors           (InspectorBase[]) │
 │     ├─ PromptInjectionInspector                           │
 │     ├─ MaliciousUrlInspector                              │
-│     ├─ InjectionSqlCmdInspector                           │
+│     ├─ Sql / Command / XSS inspectors                     │
 │     ├─ BotFuzzingInspector                                │
+│     ├─ JwtTamperingInspector / GraphqlAbuseInspector      │
 │     └─ PaddingEvasionInspector          (anti-evasion)    │
-│  7. Remote AI Agent (opcional)           (Circuit Breaker) │
+│  7. Remote AI Agent (BYO webhook)        (Circuit Breaker) │
 │  8. Verdict Consolidation                                  │
 └──────────────────────────┬─────────────────────────────────┘
                            │
@@ -144,10 +145,14 @@ Bus de eventos pub/sub interno. Emite: `threatDetected`, `requestBlocked`, `requ
 | Inspector | Detecta | Score |
 |-----------|---------|-------|
 | PromptInjectionInspector | Inyección de prompts en LLMs | 85 |
-| MaliciousUrlInspector | URLs peligrosas, SSRF, Redirect abierto | 78 |
-| InjectionSqlCmdInspector | SQL Injection, OS Command Injection | 90 |
-| BotFuzzingInspector | Fuzzing automatizado, User-Agents de bots | 65 |
+| MaliciousUrlInspector | URLs sospechosas (IP/TLD/shortener=45, phishing=70) | 45–70 |
+| SqlInjectionInspector | SQLi clásica | 85–90 |
+| CommandInjectionInspector | OS / xp_cmdshell | 90 |
+| XssInspector | script / javascript: / event handlers | 70–80 |
+| BotFuzzingInspector | Scanner UA + path probe / entropy (no JWT/JSON solo) | 65 |
 | **PaddingEvasionInspector** | Código malicioso oculto al final/medio de payloads grandes | 92 |
+| JwtTamperingInspector | `alg: none`, kid traversal | 80–90 |
+| GraphqlAbuseInspector | Introspection, depth, batching | 65–70 |
 
 ### Agregar un inspector personalizado
 
@@ -187,6 +192,7 @@ guard.registerInspector(new MiInspector());
 | FastifyAdapter | Fastify (hook preHandler) |
 | EdgeAdapter | Cloudflare Workers, Vercel Edge |
 | HttpAdapter | Node.js http/https nativo |
+| HonoAdapter | Hono (`guard.hono()`) |
 
 ### Agregar un adaptador personalizado
 
@@ -235,11 +241,18 @@ export class HapiAdapter extends AdapterBase {
 import { createUranoGuard } from '@uranotools/urano-guard';
 
 const guard = createUranoGuard({
-    // Agente remoto
-    agentWebhookUrl: 'https://tu-agente.urano.cloud/webhook',
-    apiKey: process.env.URANO_API_KEY,
-    timeoutMs: 1500,
-    failOpen: true,
+    // Agente remoto BYO — ver CUSTOM_AGENT.md
+    remoteAgent: {
+        url: process.env.AGENT_URL,
+        timeoutMs: 1500,
+        failOpen: true,
+        invokeWhen: 'local_clean',
+        auth: { type: 'bearer', token: process.env.AGENT_TOKEN },
+        payload: {
+            include: ['method', 'path', 'body', 'localThreats'],
+            extra: { app: 'api' }
+        }
+    },
 
     // Modo operativo
     securityMode: 'block_threats', // | 'strict_zero_trust' | 'monitor_only' | 'quarantine'
@@ -303,6 +316,10 @@ const guard = createUranoGuard({
 
 ---
 
+Agente propio (no Urano Cloud): contrato, campos `include`, HMAC y `invokeWhen` están en [CUSTOM_AGENT.md](CUSTOM_AGENT.md).
+
+---
+
 ## 📦 Publicación y Distribución
 
 ```bash
@@ -333,7 +350,9 @@ npm install @uranotools/urano-guard
 | RequestFingerprinter (comportamiento) | ✅ Listo |
 | HoneypotRouter (Tarpit + HoneyTokens) | ✅ Listo |
 | mTLS utilities | ✅ Listo |
-| Inspector de GraphQL introspection | 🔜 Planeado |
-| Inspector de JWT tampering | 🔜 Planeado |
+| Inspector de GraphQL introspection | ✅ Listo |
+| Inspector de JWT tampering | ✅ Listo |
+| Adaptador Hono | ✅ Listo |
+| Agente remoto BYO (CUSTOM_AGENT.md) | ✅ Listo |
 | Adaptador para AWS API Gateway | 🔜 Planeado |
 | Dashboard SOC en tiempo real | 🔜 Planeado |

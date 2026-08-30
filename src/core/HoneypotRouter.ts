@@ -1,21 +1,16 @@
+import { randomToken } from '../utils/crypto';
+
 export interface HoneypotConfig {
-    /** Activa el modo tarpit: retarda la respuesta del atacante para gastar sus recursos */
     tarpitEnabled?: boolean;
-    /** Retardo en ms para respuestas tarpit (default: 4000) */
     tarpitDelayMs?: number;
-    /** Genera honey-tokens falsos para rastrear al atacante en sus intentos */
     honeyTokensEnabled?: boolean;
-    /** Función opcional para notificar acceso a honey-token (telemetría SOC) */
     onHoneyTokenAccessed?: (token: string, context: any) => void;
 }
 
 export interface HoneypotDecision {
     strategy: 'TARPIT' | 'HONEY_RESPONSE' | 'SHADOW_ALLOW';
-    /** Delay artificially applied in ms */
     delayMs: number;
-    /** Si es honey response, el body falso a retornar */
     fakeBody?: any;
-    /** Token de rastreo insertado en la respuesta */
     honeyToken?: string;
 }
 
@@ -32,11 +27,6 @@ export class HoneypotRouter {
         };
     }
 
-    /**
-     * Genera una decisión de honeypot para un atacante detectado.
-     * La idea es no rechazar de inmediato con 403 (lo cual enseña al atacante),
-     * sino retardarlo, rastrearlo o responderle con datos falsos.
-     */
     async decide(threatCategory: string, riskScore: number): Promise<HoneypotDecision> {
         const delayMs = this.config.tarpitEnabled ? (this.config.tarpitDelayMs ?? 4_000) : 0;
 
@@ -57,15 +47,9 @@ export class HoneypotRouter {
             };
         }
 
-        return {
-            strategy: 'TARPIT',
-            delayMs
-        };
+        return { strategy: 'TARPIT', delayMs };
     }
 
-    /**
-     * Detecta si una petición contiene un honey-token (el atacante regresó con datos robados).
-     */
     detectHoneyTokenAccess(body: any, headers: Record<string, any>): string | null {
         const text = JSON.stringify(body || '') + JSON.stringify(headers || '');
         for (const [token] of this.honeyTokens) {
@@ -79,11 +63,10 @@ export class HoneypotRouter {
     }
 
     private generateHoneyToken(): string {
-        return `ht_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+        return randomToken('ht');
     }
 
     private generateFakeResponse(threatCategory: string, token: string): any {
-        // Respuestas falsas realistas según el tipo de amenaza detectada
         const fakes: Record<string, any> = {
             'PROMPT_INJECTION': {
                 status: 'processed',
@@ -92,6 +75,12 @@ export class HoneypotRouter {
                 nextStep: `https://api.trace.urano.cloud/v1/session/${token}`
             },
             'SQL_CMD_INJECTION': {
+                status: 'query_success',
+                rows: [],
+                traceId: token,
+                executedAt: new Date().toISOString()
+            },
+            'SQL_INJECTION': {
                 status: 'query_success',
                 rows: [],
                 traceId: token,

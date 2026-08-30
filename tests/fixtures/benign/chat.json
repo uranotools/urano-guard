@@ -1,0 +1,12 @@
+[
+  { "id": "weather", "body": { "message": "What is the weather in Madrid tomorrow?" } },
+  { "id": "password-reset", "body": { "message": "I need a password reset email for my account" } },
+  { "id": "travel-agent", "body": { "message": "Can you act as a travel planner for a weekend in Porto?" } },
+  { "id": "iphone-jailbreak-topic", "body": { "message": "How do I jailbreak an old iPhone for research?" } },
+  { "id": "order-json", "body": { "orderId": "ord-2048", "items": 3, "total": 49.5 } },
+  { "id": "jwt", "body": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c" },
+  { "id": "base64-blob", "body": "U29tZSBsZWdpdGltYXRlIGJhc2U2NCBlbmNvZGVkIHBheWxvYWQgdGhhdCBpcyBsb25nIGVub3VnaCB0byBsb29rIGxpa2UgZW50cm9weSBidXQgaXMganVzdCBhIGZpbGUgYXR0YWNobWVudCBlbmNvZGluZyBhbmQgc2hvdWxkIG5vdCBiZSBmbGFnZ2VkIGFzIGZ1enppbmc=" },
+  { "id": "internal-health-url", "body": { "callback": "http://10.0.0.8/health" } },
+  { "id": "login-docs", "body": { "message": "Where is the login documentation for our bank partners?" } },
+  { "id": "config-question", "body": { "message": "Please explain how to set debug config in development" } }
+]
