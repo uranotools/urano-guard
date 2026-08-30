@@ -9,8 +9,8 @@
     "build:bundle": "esbuild src/index.ts --bundle --platform=node --outdir=dist --format=cjs",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vitest.config.mjs",
+    "test:watch": "vitest --config vitest.config.mjs",
     "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
