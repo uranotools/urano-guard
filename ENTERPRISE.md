@@ -147,6 +147,10 @@ Do not share one `MemoryStore` across unrelated apps on the same host and expect
 - **Pinned MemoryStore growth** — nonces, blocks, and IP sets are never LRU-evicted, so a long-lived process can grow past `maxEntries`. TTL still expires keys; Redis does not have this in-process cap.
 - **Custom `SharedStore` implementations** must add `setNX`, `sadd`, `smembers`, `decr`, and `cas`. Redis clients that only wrapped `get`/`set`/`del`/`incr` need the extra commands **and** `eval` (node-redis wrap above).
 
+## Optional CrowdSec
+
+Off unless you set `crowdsec`. It is IP reputation (community + your scenarios), not content analysis and not the Urano agent. The LAPI bouncer key is required only for `url`; use `lookup` to keep the key out of this process. `inspect: true` checks `context.ip` and fail-opens if LAPI is down. The agent skill is `crowdsec.lookup`.
+
 ## BYO remote agent
 
 The local WAF is the in-process perimeter. The **agent** is the parallel layer: any HTTPS endpoint you operate (same host, another VPC, an LLM, a SOC service). Guard POSTs schema 1.0 and maps the verdict. A first hop can stay small (`payload.include`); the agent may `NEED` extra fields, and Guard sends **one** follow-up of `need ∩ payload.onRequest` only. `response.include` declares which extras (`analysis` / `report` / …) land on the decision. Guard does not generate reports and does not put them on the audit event.

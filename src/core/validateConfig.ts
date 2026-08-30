@@ -108,6 +108,23 @@ export function validateConfig(config: UranoGuardConfig): void {
 
     assertHttpUrl('agentWebhookUrl', config.agentWebhookUrl);
 
+    if (config.crowdsec) {
+        const cs = config.crowdsec;
+        assertPositiveNumber('crowdsec.timeoutMs', cs.timeoutMs);
+        if (cs.lookup && typeof cs.lookup !== 'function') {
+            throw new ConfigValidationError('crowdsec.lookup must be a function');
+        }
+        if (!cs.lookup) {
+            if (!cs.url) {
+                throw new ConfigValidationError('crowdsec.url is required unless you inject crowdsec.lookup');
+            }
+            assertHttpUrl('crowdsec.url', cs.url);
+            if (!cs.apiKey) {
+                throw new ConfigValidationError('crowdsec.apiKey is required for CrowdSec LAPI (or inject crowdsec.lookup)');
+            }
+        }
+    }
+
     if (config.remoteAgent) {
         assertHttpUrl('remoteAgent.url', config.remoteAgent.url);
         assertPositiveNumber('remoteAgent.timeoutMs', config.remoteAgent.timeoutMs);

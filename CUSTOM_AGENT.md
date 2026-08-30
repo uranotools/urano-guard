@@ -152,6 +152,32 @@ Follow-up (same `requestId`, `followUp: true`) adds only granted fields. A secon
 
 ---
 
+## Optional CrowdSec (IP reputation, not the Urano agent)
+
+CrowdSec is a **log/IP sensor**, not the live analyze endpoint. Guard never requires it. If you set `crowdsec`, you can:
+
+1. Let the **Urano agent** NEED `crowdsec.lookup` (auto-registered unless `registerSkill: false`).
+2. Optionally check the client IP on inspect (`inspect: true`). LAPI errors **fail-open**.
+
+CrowdSec’s bouncer API uses `X-Api-Key`. That key is **only** required when you pass `url`. Inject `lookup` if you already wrap LAPI and do not want the key in Guard.
+
+```ts
+createUranoGuard({
+    remoteAgent: { url: process.env.AGENT_URL },
+    crowdsec: {
+        url: process.env.CROWDSEC_LAPI,      // e.g. http://127.0.0.1:8080
+        apiKey: process.env.CROWDSEC_KEY,    // bouncer key — omit if you set lookup
+        inspect: false,                      // true = cheap IP check before heuristics
+        timeoutMs: 800
+        // lookup: (ip) => myCsClient.decisions(ip)
+    }
+});
+```
+
+Agent: `{ "verdict": "NEED", "skills": ["crowdsec.lookup"] }` or `{ "name": "crowdsec.lookup", "args": { "ip": "1.2.3.4" } }`.
+
+---
+
 ## Declared extras and mini-skills (logs, chunks)
 
 **Always-on custom vars** — `payload.extra` (object or `(ctx) => …`) goes on every hop. Use for tenant id, env, app name. Do not put full logs here.

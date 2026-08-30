@@ -1,6 +1,6 @@
 {
   "name": "@uranotools/urano-guard",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "description": "Urano Guard SDK — Extensible Security Gateway & AI WAF Middleware for APIs, Webhooks and Infrastructure",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

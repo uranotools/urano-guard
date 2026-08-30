@@ -316,6 +316,7 @@ const guard = createUranoGuard({
     // store: new RedisSharedStore({ client }),
     auditLogger: createHttpAuditSink({ url: process.env.SIEM_URL }),
     metrics: createPrometheusMetrics(),
+    // crowdsec: { url: process.env.CROWDSEC_LAPI, apiKey: process.env.CROWDSEC_KEY },
 
     remoteAgent: {
         url: process.env.AGENT_URL, // omitir = 100% local
@@ -406,7 +407,7 @@ npm run lint
 npm run build
 ```
 
-Publicar: bump en `package.json`, CHANGELOG, tag `vX.Y.Z` y GitHub Release (`publish.yml` hace `npm publish --provenance`). No publiques a mano salvo que no haga falta provenance. Hoy `package.json` está en **1.1.0**; el trabajo inédito es **1.2.0 (unreleased)**.
+Publicar: bump en `package.json`, CHANGELOG, tag `vX.Y.Z` y GitHub Release (`publish.yml` hace `npm publish --provenance`). No publiques a mano salvo que no haga falta provenance. Hoy `package.json` está en **1.2.1**.
 
 ---
 
@@ -417,9 +418,9 @@ Publicar: bump en `package.json`, CHANGELOG, tag `vX.Y.Z` y GitHub Release (`pub
 | Inspectores (prompt, URL, SQL/CMD/XSS, bot, padding, JWT, GraphQL) | ✅ Listo |
 | CircuitBreaker (in-process + store `cas`/`decr`/`setNX`) | ✅ Listo |
 | ReplayGuard (`setNX`), SemanticRateLimiter (`sadd`), fingerprints | ✅ Listo |
-| SharedStore / MemoryStore pin / RedisSharedStore | ✅ 1.2 unreleased |
-| `failClosed`, validateConfig, audit + `createHttpAuditSink` | ✅ 1.2 unreleased |
-| Prometheus + OTel Meter inyectado | ✅ 1.2 unreleased |
+| SharedStore / MemoryStore pin / RedisSharedStore | ✅ 1.2.1 |
+| `failClosed`, validateConfig, audit + `createHttpAuditSink` | ✅ 1.2.1 |
+| Prometheus + OTel Meter inyectado | ✅ 1.2.1 |
 | Agente BYO + passthrough `analysis` / `report` | ✅ Listo |
 | Adaptador Hono | ✅ Listo |
 | Adaptador AWS API Gateway | 🔜 Planeado |

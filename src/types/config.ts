@@ -4,6 +4,7 @@ import { GuardLogger, MetricsExporter } from './logger';
 import { RemoteAgentConfig } from './remoteAgent';
 import { AuditLogger } from './audit';
 import { SharedStore } from './store';
+import { CrowdSecConfig } from './crowdsec';
 
 export type SecurityMode = 'block_threats' | 'monitor_only' | 'strict_zero_trust' | 'quarantine';
 export type DefaultAction = 'block' | 'monitor' | 'quarantine' | 'allow';
@@ -108,6 +109,11 @@ export interface UranoGuardConfig {
     auditLogger?: AuditLogger | 'json';
     /** Shared cache + rate-limit store. Defaults to in-process MemoryStore. */
     store?: SharedStore;
+    /**
+     * Optional CrowdSec LAPI. Off unless set. Bouncer API key is only
+     * required when you use `url` (CrowdSec’s protocol). Inject `lookup` to avoid it.
+     */
+    crowdsec?: CrowdSecConfig;
 
     onThreatDetected?: ThreatCallback;
     onBlock?: BlockHandler;

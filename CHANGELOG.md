@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.2.0 (unreleased)
+## 1.2.1 - 2026-08-30
 
-Not published yet. `package.json` stays at **1.1.0** until you tag this release.
+1.2.0 was never published (npm still had 1.1.0), so this ships as 1.2.1.
 
 ### Features
 
@@ -24,6 +24,7 @@ Not published yet. `package.json` stays at **1.1.0** until you tag this release.
 - **`maxFollowUps`** (1–4, default 1): extra NEED hops after the first POST.
 - **Agent memory**: `remoteAgent.memory` writes `remember` / `memory` to `ug:agent:mem:` and sends it on the next inspect for that key.
 - **Async investigate**: `investigateAsync.enabled` — a verdict plus `investigate: true` returns now (`investigationPending`); report/NEED continue in the background (`onComplete`, EventBus `agentInvestigationComplete`).
+- **Optional CrowdSec LAPI**: `crowdsec` is off unless set. Bouncer `apiKey` only when you pass `url` (CrowdSec’s API). Inject `lookup` to skip the key. Skill `crowdsec.lookup` for the agent; `inspect: true` checks the IP on the cheap path (fail-open). Not an AI agent — IP reputation.
 
 ### Docs
 

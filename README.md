@@ -13,7 +13,7 @@
 
 The WAF stays on the request path. The **agent** is the plus: analysis, reports, NEED + declared skills. This package is not the agent and does not host models. See [CUSTOM_AGENT.md](CUSTOM_AGENT.md).
 
-### Upcoming in 1.2.0 (unreleased)
+### What's new in 1.2.1
 
 **Async SharedStore** (`setNX`, `sadd` / `smembers`, `decr`, `cas`) plus **`RedisSharedStore`**. Shared circuit, atomic replay, `await guard.ready()`. **`createHttpAuditSink`**, **`failClosed`**, Prometheus. Agent responses may include **`analysis` / `report`** (`decision.agentAnalysis` / `agentReport`). Cluster notes: [ENTERPRISE.md](ENTERPRISE.md). Agent: [CUSTOM_AGENT.md](CUSTOM_AGENT.md). Full notes: [CHANGELOG.md](CHANGELOG.md).
 
@@ -252,8 +252,9 @@ const config: UranoGuardConfig = {
 
     auditLogger: 'json',     // or createHttpAuditSink({ url }) — never includes body/cookies/Authorization
     metrics: createPrometheusMetrics(),
-    // store: new RedisSharedStore({ client }), // default MemoryStore; inject Redis for multi-process
-    // await guard.ready();                     // before listen() if another process reads Redis first
+    // store: new RedisSharedStore({ client }),
+    // crowdsec: { url: process.env.CROWDSEC_LAPI, apiKey: process.env.CROWDSEC_KEY }, // optional IP reputation
+    // await guard.ready();
 
     remoteAgent: {
         url: process.env.AGENT_URL, // omit for 100% local

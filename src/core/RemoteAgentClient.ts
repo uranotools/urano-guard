@@ -15,6 +15,8 @@ import {
     RemotePayloadField
 } from '../types/remoteAgent';
 import { SharedStore } from '../types/store';
+import { CROWDSEC_SKILL_NAME } from '../types/crowdsec';
+import { createCrowdSecSkill } from './CrowdSec';
 import { CircuitBreaker } from './CircuitBreaker';
 import { isFailClosed } from './failPolicy';
 import { signHmac, verifyHmacSignature } from '../utils/crypto';
@@ -96,13 +98,27 @@ export function resolveRemoteAgentConfig(config: UranoGuardConfig): RemoteAgentC
         headers: nested.headers,
         auth,
         payload: nested.payload,
-        skills: nested.skills,
+        skills: mergeCrowdSecSkill(config, nested.skills),
         memory: nested.memory,
         investigateAsync: nested.investigateAsync,
         response: nested.response,
         buildPayload: nested.buildPayload,
         mapResponse: nested.mapResponse
     };
+}
+
+function mergeCrowdSecSkill(
+    config: UranoGuardConfig,
+    skills: RemoteAgentConfig['skills']
+): RemoteAgentConfig['skills'] {
+    const cs = config.crowdsec;
+    if (!cs || cs.registerSkill === false) return skills;
+    if (!cs.lookup && !cs.url) return skills;
+    const catalog = { ...(skills?.catalog || {}) };
+    if (!catalog[CROWDSEC_SKILL_NAME]) {
+        catalog[CROWDSEC_SKILL_NAME] = createCrowdSecSkill(cs);
+    }
+    return { ...skills, catalog };
 }
 
 export function shouldInvokeRemoteWithRange(

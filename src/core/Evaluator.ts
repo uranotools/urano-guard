@@ -16,6 +16,8 @@ import { sha256Hex } from '../utils/crypto';
 import { stringifySafe } from '../utils/inspectText';
 import { SharedStore } from '../types/store';
 import { EventBus } from './EventBus';
+import { createCrowdSecLookup } from './CrowdSec';
+import { CrowdSecLookupResult } from '../types/crowdsec';
 
 const INSPECTOR_FLAGS: Record<string, keyof InspectorFlags> = {
     PromptInjectionInspector: 'promptInjection',
@@ -43,6 +45,8 @@ export class Evaluator {
     private remoteClient?: RemoteAgentClient;
     private logger: GuardLogger;
     private metrics?: MetricsExporter;
+    private crowdsecLookup?: (ip: string) => Promise<CrowdSecLookupResult>;
+    private crowdsecInspect = false;
 
     constructor(
         config: UranoGuardConfig,
@@ -98,6 +102,11 @@ export class Evaluator {
             this.fingerprinter = new RequestFingerprinter(10_000, extras?.store ?? config.store);
         }
 
+        if (config.crowdsec && (config.crowdsec.lookup || config.crowdsec.url)) {
+            this.crowdsecLookup = createCrowdSecLookup(config.crowdsec);
+            this.crowdsecInspect = config.crowdsec.inspect === true;
+        }
+
         const remoteCfg = resolveRemoteAgentConfig(config);
         if (remoteCfg) {
             const store = extras?.store ?? config.store;
@@ -129,6 +138,27 @@ export class Evaluator {
 
         if (await this.registry.isWhitelisted(senderId)) {
             return this.allow(start, 'LOCAL_INSPECTOR');
+        }
+
+        if (this.crowdsecInspect && this.crowdsecLookup) {
+            const cs = await this.crowdsecLookup(context.ip);
+            if (cs.error) {
+                this.logger.warn(`CrowdSec lookup failed (${cs.error}); fail-open`);
+                this.metrics?.increment('crowdsecFailure', 1);
+            } else if (cs.banned) {
+                this.metrics?.increment('crowdsecHit', 1);
+                if (securityMode !== 'monitor_only') {
+                    return this.block(start, 90, [{
+                        id: newIncidentId('thr_cs'),
+                        category: 'CUSTOM',
+                        severity: 'HIGH',
+                        riskScore: 90,
+                        summary: `CrowdSec ban for ${context.ip}` + (cs.decisions[0]?.reason ? ` (${cs.decisions[0].reason})` : ''),
+                        detectedAt: new Date().toISOString(),
+                        sender: senderId
+                    }], 'CrowdSec decision', 'LOCAL_INSPECTOR');
+                }
+            }
         }
 
         if (await this.registry.isBlacklisted(senderId)) {

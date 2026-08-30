@@ -59,4 +59,7 @@ export { OpenTelemetryMetrics, createOpenTelemetryMetrics } from './core/OpenTel
 export type { OtelMeter, OpenTelemetryMetricsOptions } from './types/otel';
 export { createHttpAuditSink } from './core/HttpAuditSink';
 export type { HttpAuditSinkOptions } from './core/HttpAuditSink';
+export { createCrowdSecLookup, createCrowdSecSkill, crowdsecSkillName } from './core/CrowdSec';
+export { CROWDSEC_SKILL_NAME } from './types/crowdsec';
+export type { CrowdSecConfig, CrowdSecDecision, CrowdSecLookupResult } from './types/crowdsec';
 
